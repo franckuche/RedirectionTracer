@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Détection de boucles de redirection</title>
+</head>
+<body>
+    <h2>Uploader un fichier CSV de redirections</h2>
+    <form action="/detect-loops" enctype="multipart/form-data" method="post">
+        <div>
+            <label for="file">Fichier CSV :</label><br>
+            <input name="file" id="file" type="file" accept=".csv" required>
+        </div>
+        <div style="margin-top: 10px;">
+            <label for="domain_prefix">Préfixe de domaine (optionnel, ex: https://www.example.com) :</label><br>
+            <input name="domain_prefix" id="domain_prefix" type="text" size="50" placeholder="https://www.votredomaine.com">
+        </div>
+        <div style="margin-top: 15px;">
+            <input type="submit" value="Analyser les boucles">
+        </div>
+    </form>
+</body>
+</html>

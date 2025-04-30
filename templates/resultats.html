@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Résultats - Détection de boucles</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        h2, h3 { border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+        .loop-item { margin-bottom: 15px; padding: 10px; border: 1px solid #eee; border-radius: 4px; background-color: #f0f0f0; }
+        .loop-path { background-color: #e8e8e8; padding: 8px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; margin-top: 5px; }
+        .internal { color: green; font-weight: bold; }
+        .external { color: orange; font-weight: bold; }
+        .back-link { margin-top: 20px; display: inline-block; }
+        /* Styles pour le tableau de détails */
+        #details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        #details-table th, #details-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top; /* Pour les conclusions longues */
+        }
+        #details-table th {
+            background-color: #f2f2f2;
+        }
+        #details-table tr:nth-child(even) { background-color: #f9f9f9; }
+        .conclusion-ok { color: green; }
+        .conclusion-ko { color: red; }
+        .conclusion-loop { color: orange; }
+    </style>
+</head>
+<body>
+    <h2>Résultats de l'analyse pour : {{ filename }}</h2>
+    {% if domain_prefix_used %}
+    <p><em>Préfixe de domaine utilisé pour les URLs relatives : {{ domain_prefix_used }}</em></p>
+    {% endif %}
+
+    <hr>
+    <h3>Analyse Ligne par Ligne</h3>
+    {% if details %}
+        <button id="download-csv-button" style="margin-bottom: 15px;">Télécharger les détails en CSV</button>
+        <table id="details-table">
+            <thead>
+                <tr>
+                    <th>Ligne CSV</th>
+                    <th>URL Source (CSV)</th>
+                    <th>URL Target (CSV)</th>
+                    <th>URL Finale Atteinte</th>
+                    <th>Conclusion</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for detail in details %}
+                <tr>
+                    <td>{{ detail.line }}</td>
+                    <td>{{ detail.source }}</td>
+                    <td>{{ detail.target }}</td>
+                    <td>{{ detail.final }}</td>
+                    <td>
+                        {% if 'OK:' in detail.conclusion %}
+                            <span class="conclusion-ok">{{ detail.conclusion }}</span>
+                        {% elif 'KO:' in detail.conclusion %}
+                            <span class="conclusion-ko">{{ detail.conclusion }}</span>
+                        {% elif 'ERREUR: Boucle' in detail.conclusion %}
+                            <span class="conclusion-loop">{{ detail.conclusion }}</span>
+                         {% elif 'ERREUR: Chain' in detail.conclusion %}
+                            <span class="conclusion-loop">{{ detail.conclusion }}</span>
+                        {% else %}
+                            {{ detail.conclusion }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>Aucune redirection à analyser dans le fichier.</p>
+    {% endif %}
+
+    <hr style="margin-top: 30px;">
+    <h3>Détection Globale des Boucles</h3>
+    {% if loops %}
+        <p>{{ loops | length }} boucle(s) globale(s) détectée(s) :</p>
+        {% for loop_data in loops %}
+            <div class="loop-item">
+                <strong>Type : 
+                    {% if loop_data.internal %}
+                        <span class="internal">Interne</span>
+                    {% else %}
+                        <span class="external">Externe (implique des redirections non fournies)</span>
+                    {% endif %}
+                </strong>
+                <div class="loop-path">{{ loop_data.loop | join('\n -> ') }}</div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>Aucune boucle de redirection n'a été détectée dans ce fichier.</p>
+    {% endif %}
+
+    <a href="/" class="back-link">Retour à l'upload</a>
+
+    {# Stocker les données JSON pour le script d'export #}
+    <script id="details-data" type="application/json">
+        {{ details_json | safe }}
+    </script>
+
+    <script>
+        // Script pour le téléchargement CSV
+        const downloadBtn = document.getElementById('download-csv-button');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => {
+                const jsonData = document.getElementById('details-data').textContent;
+                try {
+                    const details = JSON.parse(jsonData);
+                    if (!details || details.length === 0) {
+                        alert("Aucune donnée à exporter.");
+                        return;
+                    }
+
+                    // Définir les entêtes CSV (correspondant aux clés de l'objet detail)
+                    const headers = ["Ligne CSV", "URL Source (CSV)", "URL Target (CSV)", "URL Finale Atteinte", "Conclusion"];
+                    const csvRows = [];
+                    csvRows.push(headers.join(',')); // Ajouter la ligne d'entête
+
+                    // Ajouter les lignes de données
+                    for (const detail of details) {
+                        // Échapper les virgules et les guillemets dans les valeurs
+                        const values = [
+                            detail.line,
+                            `"${(detail.source || '').replace(/"/g, '""')}"`, // Mettre entre guillemets et échapper
+                            `"${(detail.target || '').replace(/"/g, '""')}"`, 
+                            `"${(detail.final || '').replace(/"/g, '""')}"`,
+                            `"${(detail.conclusion || '').replace(/"/g, '""')}"`
+                        ];
+                        csvRows.push(values.join(','));
+                    }
+
+                    const csvString = csvRows.join('\n');
+                    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+
+                    // Créer un lien de téléchargement
+                    const link = document.createElement("a");
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", "details_redirections.csv");
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                } catch (error) {
+                    console.error("Erreur lors de la génération du CSV:", error);
+                    alert("Une erreur est survenue lors de la préparation du fichier CSV.");
+                }
+            });
+        }
+    </script>
+
+</body>
+</html>
