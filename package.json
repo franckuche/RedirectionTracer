@@ -1,0 +1,26 @@
+{
+  "name": "test_boucle_redirection",
+  "version": "1.0.0",
+  "description": "Ce projet fournit une application web simple basée sur FastAPI pour analyser un fichier CSV contenant des redirections d'URL. Il détecte les boucles de redirection globales et fournit une analyse détaillée de chaque redirection spécifiée dans le fichier.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/franckuche/RedirectionTracer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/franckuche/RedirectionTracer/issues"
+  },
+  "homepage": "https://github.com/franckuche/RedirectionTracer#readme",
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.5"
+  }
+}

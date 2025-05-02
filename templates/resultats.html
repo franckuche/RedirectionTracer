@@ -1,162 +1,578 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <title>Résultats - Détection de boucles</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; }
-        h2, h3 { border-bottom: 1px solid #ccc; padding-bottom: 10px; }
-        .loop-item { margin-bottom: 15px; padding: 10px; border: 1px solid #eee; border-radius: 4px; background-color: #f0f0f0; }
-        .loop-path { background-color: #e8e8e8; padding: 8px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; margin-top: 5px; }
-        .internal { color: green; font-weight: bold; }
-        .external { color: orange; font-weight: bold; }
-        .back-link { margin-top: 20px; display: inline-block; }
-        /* Styles pour le tableau de détails */
-        #details-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        #details-table th, #details-table td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-            vertical-align: top; /* Pour les conclusions longues */
-        }
-        #details-table th {
-            background-color: #f2f2f2;
-        }
-        #details-table tr:nth-child(even) { background-color: #f9f9f9; }
-        .conclusion-ok { color: green; }
-        .conclusion-ko { color: red; }
-        .conclusion-loop { color: orange; }
-    </style>
-</head>
-<body>
-    <h2>Résultats de l'analyse pour : {{ filename }}</h2>
-    {% if domain_prefix_used %}
-    <p><em>Préfixe de domaine utilisé pour les URLs relatives : {{ domain_prefix_used }}</em></p>
-    {% endif %}
-
-    <hr>
-    <h3>Analyse Ligne par Ligne</h3>
-    {% if details %}
-        <button id="download-csv-button" style="margin-bottom: 15px;">Télécharger les détails en CSV</button>
-        <table id="details-table">
-            <thead>
-                <tr>
-                    <th>Ligne CSV</th>
-                    <th>URL Source (CSV)</th>
-                    <th>URL Target (CSV)</th>
-                    <th>URL Finale Atteinte</th>
-                    <th>Conclusion</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for detail in details %}
-                <tr>
-                    <td>{{ detail.line }}</td>
-                    <td>{{ detail.source }}</td>
-                    <td>{{ detail.target }}</td>
-                    <td>{{ detail.final }}</td>
-                    <td>
-                        {% if 'OK:' in detail.conclusion %}
-                            <span class="conclusion-ok">{{ detail.conclusion }}</span>
-                        {% elif 'KO:' in detail.conclusion %}
-                            <span class="conclusion-ko">{{ detail.conclusion }}</span>
-                        {% elif 'ERREUR: Boucle' in detail.conclusion %}
-                            <span class="conclusion-loop">{{ detail.conclusion }}</span>
-                         {% elif 'ERREUR: Chain' in detail.conclusion %}
-                            <span class="conclusion-loop">{{ detail.conclusion }}</span>
-                        {% else %}
-                            {{ detail.conclusion }}
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <p>Aucune redirection à analyser dans le fichier.</p>
-    {% endif %}
-
-    <hr style="margin-top: 30px;">
-    <h3>Détection Globale des Boucles</h3>
-    {% if loops %}
-        <p>{{ loops | length }} boucle(s) globale(s) détectée(s) :</p>
-        {% for loop_data in loops %}
-            <div class="loop-item">
-                <strong>Type : 
-                    {% if loop_data.internal %}
-                        <span class="internal">Interne</span>
-                    {% else %}
-                        <span class="external">Externe (implique des redirections non fournies)</span>
-                    {% endif %}
-                </strong>
-                <div class="loop-path">{{ loop_data.loop | join('\n -> ') }}</div>
-            </div>
-        {% endfor %}
-    {% else %}
-        <p>Aucune boucle de redirection n'a été détectée dans ce fichier.</p>
-    {% endif %}
-
-    <a href="/" class="back-link">Retour à l'upload</a>
-
-    {# Stocker les données JSON pour le script d'export #}
-    <script id="details-data" type="application/json">
-        {{ details_json | safe }}
-    </script>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Résultats de l'Analyse des Redirections</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configuration Tailwind personnalisée -->
     <script>
-        // Script pour le téléchargement CSV
-        const downloadBtn = document.getElementById('download-csv-button');
-        if (downloadBtn) {
-            downloadBtn.addEventListener('click', () => {
-                const jsonData = document.getElementById('details-data').textContent;
-                try {
-                    const details = JSON.parse(jsonData);
-                    if (!details || details.length === 0) {
-                        alert("Aucune donnée à exporter.");
-                        return;
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                        info: '#3b82f6'
                     }
+                }
+            }
+        }
+    </script>
+    <!-- Alpine.js pour l'interactivité -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Chart.js pour les graphiques -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- API Client -->
+    <script src="/static/js/api.js"></script>
+    <!-- Script de la page de résultats -->
+    <script src="/static/js/results.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="initializeAlpine('{{ task_id }}')" 
+      x-init="$nextTick(() => { init().then(() => initChart()); })">
+    <!-- En-tête -->
+    <header class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+            <h1 class="text-2xl font-bold text-gray-900">Résultats de l'analyse des redirections</h1>
+            <p class="text-sm text-gray-500 mt-1" x-text="stats ? 'Fichier analysé: ' + stats.filename : 'Chargement...'" ></p>
+        </div>
+    </header>
 
-                    // Définir les entêtes CSV (correspondant aux clés de l'objet detail)
-                    const headers = ["Ligne CSV", "URL Source (CSV)", "URL Target (CSV)", "URL Finale Atteinte", "Conclusion"];
-                    const csvRows = [];
-                    csvRows.push(headers.join(',')); // Ajouter la ligne d'entête
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <!-- État de chargement -->
+        <div x-show="loading" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <span class="ml-3 text-lg">Chargement des résultats...</span>
+        </div>
 
-                    // Ajouter les lignes de données
-                    for (const detail of details) {
-                        // Échapper les virgules et les guillemets dans les valeurs
-                        const values = [
-                            detail.line,
-                            `"${(detail.source || '').replace(/"/g, '""')}"`, // Mettre entre guillemets et échapper
-                            `"${(detail.target || '').replace(/"/g, '""')}"`, 
-                            `"${(detail.final || '').replace(/"/g, '""')}"`,
-                            `"${(detail.conclusion || '').replace(/"/g, '""')}"`
-                        ];
-                        csvRows.push(values.join(','));
+        <!-- Message d'erreur -->
+        <div x-show="error" class="bg-danger-100 border border-danger-400 text-danger-700 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Erreur!</strong>
+            <span class="block sm:inline" x-text="error"></span>
+        </div>
+        
+        <!-- Contenu principal (affiché uniquement quand les données sont chargées) -->
+        <div x-show="!loading && !error">
+            <!-- Tableau de bord avec statistiques -->
+            <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
+                <div class="px-4 py-5 sm:p-6">
+                    <h2 class="text-lg font-medium text-gray-900 mb-4">Tableau de bord</h2>
+                    
+                    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                        <!-- Carte: Total URLs -->
+                        <div class="bg-white overflow-hidden shadow rounded-lg">
+                            <div class="px-4 py-5 sm:p-6">
+                                <dt class="text-sm font-medium text-gray-500 truncate">Total URLs analysées</dt>
+                                <dd class="mt-1 text-3xl font-semibold text-gray-900" x-text="stats.total"></dd>
+                            </div>
+                        </div>
+                        
+                        <!-- Carte: Redirections correctes -->
+                        <div class="bg-white overflow-hidden shadow rounded-lg border-l-4 border-success">
+                            <div class="px-4 py-5 sm:p-6">
+                                <dt class="text-sm font-medium text-gray-500 truncate">Redirections correctes</dt>
+                                <dd class="mt-1 text-3xl font-semibold text-success" x-text="stats.correct_count"></dd>
+                            </div>
+                        </div>
+                        
+                        <!-- Carte: Redirections incorrectes -->
+                        <div class="bg-white overflow-hidden shadow rounded-lg border-l-4 border-danger">
+                            <div class="px-4 py-5 sm:p-6">
+                                <dt class="text-sm font-medium text-gray-500 truncate">Redirections incorrectes</dt>
+                                <dd class="mt-1 text-3xl font-semibold text-danger" x-text="stats.incorrect_count"></dd>
+                            </div>
+                        </div>
+                        <!-- Carte: Erreurs -->
+                        <div class="bg-white overflow-hidden shadow rounded-lg border-l-4 border-secondary">
+                            <div class="px-4 py-5 sm:p-6">
+                                <dt class="text-sm font-medium text-gray-500 truncate">Erreurs</dt>
+                                <dd class="mt-1 text-3xl font-semibold text-secondary" x-text="stats.error_count"></dd>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Graphique -->
+                    <div class="mt-6">
+                        <canvas id="resultsChart" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tableau des résultats avec filtres et export intégrés -->
+            <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
+                <!-- En-tête du tableau avec titre et bouton d'export -->
+                <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Résultats de l'analyse</h3>
+                    
+                    <!-- Bouton d'export CSV -->
+                    <button @click="exportCSV()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors duration-200">
+                        <svg class="mr-2 -ml-1 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Exporter en CSV
+                    </button>
+                </div>
+                
+                <!-- Section de recherche et filtres -->
+                <div class="px-6 py-4 border-b border-gray-200 bg-white">
+                    <!-- Recherche -->
+                    <div class="mb-6">
+                        <div class="flex items-center mb-2">
+                            <svg class="h-5 w-5 text-gray-500 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                            </svg>
+                            <label for="search-input" class="text-sm font-medium text-gray-700">Rechercher une URL</label>
+                        </div>
+                        <div class="relative rounded-md shadow-sm">
+                            <input 
+                                type="text" 
+                                id="search-input" 
+                                x-model="searchQuery" 
+                                placeholder="Entrez une URL ou un mot-clé..." 
+                                class="focus:ring-primary focus:border-primary block w-full pl-4 pr-10 py-3 sm:text-sm border-gray-300 rounded-md">
+                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <button 
+                                    x-show="searchQuery" 
+                                    @click="searchQuery = ''" 
+                                    class="text-gray-400 hover:text-gray-500 focus:outline-none">
+                                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Filtres par statut -->
+                    <div>
+                        <div class="flex items-center mb-4">
+                            <svg class="h-5 w-5 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+                            </svg>
+                            <h4 class="text-sm font-medium text-gray-700">Filtrer par statut</h4>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                            <!-- Tous -->
+                            <button 
+                                @click="toggleStatusFilter('all')" 
+                                :class="{'bg-primary bg-opacity-10 border-primary': statusFilters.includes('all'), 'bg-white hover:bg-gray-50': !statusFilters.includes('all')}" 
+                                class="flex flex-col items-center justify-center p-4 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                                <span class="text-xl font-bold text-gray-700 mb-1" x-text="stats.total"></span>
+                                <span class="text-sm font-medium text-gray-500">Tous</span>
+                            </button>
+                        
+                        <!-- Corrects -->
+                        <button 
+                            @click="toggleStatusFilter('correct')" 
+                            :class="{'bg-green-50 border-green-500': statusFilters.includes('correct'), 'bg-white hover:bg-gray-50': !statusFilters.includes('correct')}" 
+                            class="flex flex-col items-center justify-center p-4 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            <span class="text-xl font-bold text-green-600 mb-1" x-text="stats.correct_count"></span>
+                            <span class="text-sm font-medium text-gray-500">Corrects</span>
+                        </button>
+                        
+                        <!-- Incorrects -->
+                        <button 
+                            @click="toggleStatusFilter('incorrect')" 
+                            :class="{'bg-red-50 border-red-500': statusFilters.includes('incorrect'), 'bg-white hover:bg-gray-50': !statusFilters.includes('incorrect')}" 
+                            class="flex flex-col items-center justify-center p-4 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                            <span class="text-xl font-bold text-red-600 mb-1" x-text="stats.incorrect_count"></span>
+                            <span class="text-sm font-medium text-gray-500">Incorrects</span>
+                        </button>
+                        
+                        <!-- Erreurs -->
+                        <button 
+                            @click="toggleStatusFilter('error')" 
+                            :class="{'bg-gray-200 border-gray-500': statusFilters.includes('error'), 'bg-white hover:bg-gray-50': !statusFilters.includes('error')}" 
+                            class="flex flex-col items-center justify-center p-4 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                            <span class="text-xl font-bold text-gray-600 mb-1" x-text="stats.error_count"></span>
+                            <span class="text-sm font-medium text-gray-500">Erreurs</span>
+                        </button>
+                        
+                        <!-- Redirections multiples -->
+                        <button 
+                            @click="toggleStatusFilter('multi')" 
+                            :class="{'bg-yellow-50 border-yellow-500': statusFilters.includes('multi'), 'bg-white hover:bg-gray-50': !statusFilters.includes('multi')}" 
+                            class="flex flex-col items-center justify-center p-4 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                            <span class="text-xl font-bold text-yellow-600 mb-1" x-text="stats.multi_redirect_count"></span>
+                            <span class="text-sm font-medium text-gray-500">Redirections</span>
+                            <span class="text-xs text-gray-400">multiples</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filtres par code HTTP -->
+            <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6 mt-6">
+                <div class="px-4 py-5 sm:p-6">
+                    <div class="flex items-center mb-4">
+                        <svg class="h-5 w-5 text-gray-500 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.293 1.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L7.586 10 5.293 7.707a1 1 0 010-1.414zM11 12a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd" />
+                        </svg>
+                        <h4 class="text-sm font-medium text-gray-700">Filtrer par code HTTP</h4>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <!-- Tous les codes -->
+                        <button 
+                            @click="toggleHttpStatusFilter('all')" 
+                            :class="{'bg-primary bg-opacity-10 border-primary': httpStatusFilters.includes('all'), 'bg-white hover:bg-gray-50': !httpStatusFilters.includes('all')}" 
+                            class="flex items-center justify-center p-3 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                            <span class="text-sm font-medium text-gray-700">Tous les codes</span>
+                        </button>
+                        
+                        <!-- 2xx: Succès -->
+                        <button 
+                            @click="toggleHttpStatusFilter('2xx')" 
+                            :class="{'bg-green-50 border-green-500': httpStatusFilters.includes('2xx'), 'bg-white hover:bg-gray-50': !httpStatusFilters.includes('2xx')}" 
+                            class="flex items-center justify-center p-3 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            <span class="px-2 py-1 bg-green-100 rounded-full text-xs text-green-800 mr-2">2xx</span>
+                            <span class="text-sm font-medium text-gray-700">Succès</span>
+                        </button>
+                        
+                        <!-- 3xx: Redirection -->
+                        <button 
+                            @click="toggleHttpStatusFilter('3xx')" 
+                            :class="{'bg-yellow-50 border-yellow-500': httpStatusFilters.includes('3xx'), 'bg-white hover:bg-gray-50': !httpStatusFilters.includes('3xx')}" 
+                            class="flex items-center justify-center p-3 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                            <span class="px-2 py-1 bg-yellow-100 rounded-full text-xs text-yellow-800 mr-2">3xx</span>
+                            <span class="text-sm font-medium text-gray-700">Redirection</span>
+                        </button>
+                        
+                        <!-- 4xx: Erreur client -->
+                        <button 
+                            @click="toggleHttpStatusFilter('4xx')" 
+                            :class="{'bg-red-50 border-red-500': httpStatusFilters.includes('4xx'), 'bg-white hover:bg-gray-50': !httpStatusFilters.includes('4xx')}" 
+                            class="flex items-center justify-center p-3 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                            <span class="px-2 py-1 bg-red-100 rounded-full text-xs text-red-800 mr-2">4xx</span>
+                            <span class="text-sm font-medium text-gray-700">Erreur client</span>
+                        </button>
+                        
+                        <!-- 5xx: Erreur serveur -->
+                        <button 
+                            @click="toggleHttpStatusFilter('5xx')" 
+                            :class="{'bg-purple-50 border-purple-500': httpStatusFilters.includes('5xx'), 'bg-white hover:bg-gray-50': !httpStatusFilters.includes('5xx')}" 
+                            class="flex items-center justify-center p-3 border rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                            <span class="px-2 py-1 bg-purple-100 rounded-full text-xs text-purple-800 mr-2">5xx</span>
+                            <span class="text-sm font-medium text-gray-700">Erreur serveur</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ligne</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL Source</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL Target</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL Finale</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Redirections</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">HTTP</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <template x-for="detail in filteredDetails" :key="detail.line">
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="detail.line"></td>
+                                <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" x-text="detail.source"></td>
+                                <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" x-text="detail.target"></td>
+                                <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" x-text="detail.final"></td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" 
+                                          :class="detail.redirections_count > 1 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'"
+                                          x-text="detail.redirections_count">
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="text-sm font-medium px-2 py-1 rounded-md" 
+                                          :class="{
+                                            'bg-green-100 text-green-800': detail.status === 'CORRECT',
+                                            'bg-red-100 text-red-800': detail.status === 'INCORRECT',
+                                            'bg-gray-100 text-gray-800': detail.status !== 'CORRECT' && detail.status !== 'INCORRECT'
+                                          }"
+                                          x-text="detail.status">
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 py-1 text-xs font-medium rounded-full" 
+                                          :class="{
+                                            'bg-green-100 text-green-800': detail.http_status >= 200 && detail.http_status < 300,
+                                            'bg-yellow-100 text-yellow-800': detail.http_status >= 300 && detail.http_status < 400,
+                                            'bg-red-100 text-red-800': detail.http_status >= 400 && detail.http_status < 500,
+                                            'bg-purple-100 text-purple-800': detail.http_status >= 500,
+                                            'bg-gray-100 text-gray-800': !detail.http_status || detail.http_status < 200
+                                          }"
+                                          x-text="detail.http_status > 0 ? detail.http_status : '-'">
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <button @click="showDetails = detail.index" class="text-primary hover:text-blue-900">Détails</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            </div>
+        </div>
+        
+        <!-- Modal de détails (géré par Alpine.js) -->
+        <div x-show="showDetails !== null" class="fixed z-10 inset-0 overflow-y-auto" x-cloak>
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <div x-show="showDetails !== null" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showDetails = null"></div>
+                
+                <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                    <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                        <div class="sm:flex sm:items-start">
+                            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900">Détails de la redirection</h3>
+                                <div class="mt-4 space-y-3">
+                                    <!-- Contenu dynamique géré par Alpine.js -->
+                                    <template x-if="showDetails !== null">
+                                        <div>
+                                            <p class="text-sm text-gray-500">URL Source:</p>
+                                            <p class="text-sm font-medium text-gray-900 break-all" x-text="details[showDetails].source"></p>
+                                            
+                                            <p class="mt-3 text-sm text-gray-500">URL Target attendue:</p>
+                                            <p class="text-sm font-medium text-gray-900 break-all">
+                                                <span x-text="details[showDetails].target"></span>
+                                                <span class="ml-2 px-2 py-1 text-xs font-semibold rounded-full" :class="{
+                                                    'bg-green-100 text-green-800': details[showDetails].target_status >= 200 && details[showDetails].target_status < 300,
+                                                    'bg-yellow-100 text-yellow-800': details[showDetails].target_status >= 300 && details[showDetails].target_status < 400,
+                                                    'bg-red-100 text-red-800': details[showDetails].target_status >= 400 && details[showDetails].target_status < 600,
+                                                    'bg-gray-100 text-gray-800': !details[showDetails].target_status || details[showDetails].target_status < 200
+                                                }" x-text="details[showDetails].target_status ? 'HTTP ' + details[showDetails].target_status : ''"></span>
+                                            </p>
+                                            
+                                            <p class="mt-3 text-sm text-gray-500">URL Finale réelle:</p>
+                                            <p class="text-sm font-medium text-gray-900 break-all">
+                                                <span x-text="details[showDetails].final"></span>
+                                                <span class="ml-2 px-2 py-1 text-xs font-semibold rounded-full" :class="{
+                                                    'bg-green-100 text-green-800': details[showDetails].http_status >= 200 && details[showDetails].http_status < 300,
+                                                    'bg-yellow-100 text-yellow-800': details[showDetails].http_status >= 300 && details[showDetails].http_status < 400,
+                                                    'bg-red-100 text-red-800': details[showDetails].http_status >= 400 && details[showDetails].http_status < 600,
+                                                    'bg-gray-100 text-gray-800': !details[showDetails].http_status || details[showDetails].http_status < 200
+                                                }" x-text="details[showDetails].http_status ? 'HTTP ' + details[showDetails].http_status : ''"></span>
+                                            </p>
+                                            
+                                            <p class="mt-3 text-sm text-gray-500">Nombre de redirections:</p>
+                                            <p class="text-sm font-medium text-gray-900" x-text="details[showDetails].redirections_count"></p>
+                                            
+                                            <p class="mt-3 text-sm text-gray-500">Conclusion:</p>
+                                            <p class="text-sm font-medium" :class="{'text-green-600': details[showDetails].conclusion.startsWith('OK') || details[showDetails].conclusion.startsWith('CORRECT'), 'text-red-600': details[showDetails].conclusion.startsWith('KO') || details[showDetails].conclusion.startsWith('INCORRECT'), 'text-gray-600': !details[showDetails].conclusion.startsWith('OK') && !details[showDetails].conclusion.startsWith('KO') && !details[showDetails].conclusion.startsWith('CORRECT') && !details[showDetails].conclusion.startsWith('INCORRECT')}" x-text="details[showDetails].conclusion"></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                        <button type="button" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm" @click="showDetails = null">
+                            Fermer
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Les templates de détails ont été supprimés car ils sont maintenant gérés directement par Alpine.js -->
+    </main>
+
+    <!-- Script pour le graphique et les données -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Définir les variables globales pour les données
+            window.statsData = JSON.parse('{{ stats|tojson|safe }}');
+            window.detailsData = JSON.parse('{{ details|tojson|safe }}');
+            
+            // Créer le graphique
+            const ctx = document.getElementById('resultsChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Redirections correctes', 'Redirections incorrectes', 'Erreurs', 'Redirections multiples'],
+                    datasets: [{
+                        label: '',
+                        data: [
+                            window.statsData.correct_count,
+                            window.statsData.incorrect_count,
+                            window.statsData.error_count,
+                            window.statsData.multi_redirect_count
+                        ],
+                        backgroundColor: [
+                            '#10b981', // success
+                            '#ef4444', // danger
+                            '#64748b', // secondary
+                            '#f59e0b'  // warning
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
                     }
-
-                    const csvString = csvRows.join('\n');
-                    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-
-                    // Créer un lien de téléchargement
-                    const link = document.createElement("a");
-                    const url = URL.createObjectURL(blob);
-                    link.setAttribute("href", url);
-                    link.setAttribute("download", "details_redirections.csv");
-                    link.style.visibility = 'hidden';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-
-                } catch (error) {
-                    console.error("Erreur lors de la génération du CSV:", error);
-                    alert("Une erreur est survenue lors de la préparation du fichier CSV.");
                 }
             });
-        }
+        });
     </script>
 
+    <!-- Script pour l'export CSV -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Export CSV
+            document.getElementById('download-csv-button').addEventListener('click', function() {
+                // Utiliser des variables globales pour les filtres
+                // Ces variables sont mises à jour par Alpine.js via x-effect
+                const statusFilters = window.currentStatusFilters || ['all'];
+                const searchQuery = window.currentSearchQuery || '';
+                const httpStatusFilters = window.currentHttpStatusFilters || ['all'];
+                
+                // Récupérer les détails depuis la variable globale
+                const details = window.detailsData;
+                let csvContent = "data:text/csv;charset=utf-8,";
+                
+                // En-têtes
+                csvContent += "Ligne,URL Source,URL Target,URL Finale,Redirections,Statut,Code HTTP,Conclusion\n";
+                
+                // Récupérer les détails filtrés depuis Alpine.js
+                const alpineComponent = document.querySelector('[x-data]').__x;
+                const filteredDetails = alpineComponent.$data.filteredDetails;
+                
+                // Générer les lignes du CSV
+                filteredDetails.forEach(detail => {
+                    const values = [
+                        detail.line,
+                        `"${(detail.source || '').replace(/"/g, '""')}"`, 
+                        `"${(detail.target || '').replace(/"/g, '""')}"`, 
+                        `"${(detail.final || '').replace(/"/g, '""')}"`,
+                        detail.redirections_count,
+                        `"${(detail.status || '').replace(/"/g, '""')}"`,
+                        detail.http_status || 0,
+                        `"${(detail.conclusion || '').replace(/"/g, '""')}"` 
+                    ];
+                    csvContent += values.join(',') + '\n';
+                });
+                
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'resultats_redirections.csv');
+                link.style.visibility = 'hidden';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+        });
+    </script>
+    <!-- Script pour initialiser Alpine.js -->
+    <script>
+        function data() {
+            return {
+                statusFilters: ['all'], // Tableau pour les filtres de statut
+                searchQuery: '',
+                showDetails: null,
+                httpStatusFilters: ['all'],  // Tableau pour les filtres de code HTTP
+                stats: JSON.parse('{{ stats|tojson|safe }}'),
+                details: JSON.parse('{{ details|tojson|safe }}').map((detail, index) => ({ ...detail, index })),
+                
+                // Propriété calculée pour les détails filtrés
+                get filteredDetails() {
+                    return this.details.filter(detail => {
+                        // Filtre par statut
+                        const statusFilter = 
+                            this.statusFilters.includes('all') || 
+                            (this.statusFilters.includes('correct') && detail.status === 'CORRECT') || 
+                            (this.statusFilters.includes('incorrect') && detail.status === 'INCORRECT') || 
+                            (this.statusFilters.includes('error') && detail.status === 'ERREUR') || 
+                            (this.statusFilters.includes('multi') && detail.redirections_count > 1);
+                        
+                        // Filtre par code HTTP
+                        const httpFilter = 
+                            this.httpStatusFilters.includes('all') || 
+                            (this.httpStatusFilters.includes('2xx') && detail.http_status >= 200 && detail.http_status < 300) ||
+                            (this.httpStatusFilters.includes('3xx') && detail.http_status >= 300 && detail.http_status < 400) ||
+                            (this.httpStatusFilters.includes('4xx') && detail.http_status >= 400 && detail.http_status < 500) ||
+                            (this.httpStatusFilters.includes('5xx') && detail.http_status >= 500);
+                        
+                        // Filtre par recherche
+                        const searchFilter = 
+                            !this.searchQuery || 
+                            (detail.source && detail.source.toLowerCase().includes(this.searchQuery.toLowerCase())) || 
+                            (detail.target && detail.target.toLowerCase().includes(this.searchQuery.toLowerCase())) || 
+                            (detail.final && detail.final.toLowerCase().includes(this.searchQuery.toLowerCase()));
+                        
+                        return statusFilter && httpFilter && searchFilter;
+                    });
+                },
+                
+                // Méthode pour basculer un filtre de statut
+                toggleStatusFilter(filter) {
+                    if (filter === 'all') {
+                        // Si 'all' est sélectionné, on désactive tous les autres filtres
+                        this.statusFilters = ['all'];
+                    } else {
+                        // Si 'all' est déjà dans le tableau, on le retire
+                        if (this.statusFilters.includes('all')) {
+                            this.statusFilters = this.statusFilters.filter(f => f !== 'all');
+                        }
+                        
+                        // Si le filtre est déjà dans le tableau, on le retire, sinon on l'ajoute
+                        if (this.statusFilters.includes(filter)) {
+                            this.statusFilters = this.statusFilters.filter(f => f !== filter);
+                            // Si aucun filtre n'est sélectionné, on remet 'all'
+                            if (this.statusFilters.length === 0) {
+                                this.statusFilters = ['all'];
+                            }
+                        } else {
+                            this.statusFilters.push(filter);
+                        }
+                    }
+                },
+                
+                // Méthode pour basculer un filtre de code HTTP
+                toggleHttpStatusFilter(filter) {
+                    if (filter === 'all') {
+                        // Si 'all' est sélectionné, on désactive tous les autres filtres
+                        this.httpStatusFilters = ['all'];
+                    } else {
+                        // Si 'all' est déjà dans le tableau, on le retire
+                        if (this.httpStatusFilters.includes('all')) {
+                            this.httpStatusFilters = this.httpStatusFilters.filter(f => f !== 'all');
+                        }
+                        
+                        // Si le filtre est déjà dans le tableau, on le retire, sinon on l'ajoute
+                        if (this.httpStatusFilters.includes(filter)) {
+                            this.httpStatusFilters = this.httpStatusFilters.filter(f => f !== filter);
+                            // Si aucun filtre n'est sélectionné, on remet 'all'
+                            if (this.httpStatusFilters.length === 0) {
+                                this.httpStatusFilters = ['all'];
+                            }
+                        } else {
+                            this.httpStatusFilters.push(filter);
+                        }
+                    }
+                }
+            };
+        }
+    </script>
 </body>
 </html>

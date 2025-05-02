@@ -1,0 +1,993 @@
+import uvicorn
+from fastapi import FastAPI, Request, File, UploadFile, Form, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+import os
+import csv
+import logging
+import requests
+import aiohttp
+import asyncio
+from urllib.parse import urlparse, urljoin
+from typing import List, Dict, Any, Optional, Tuple
+import time
+from datetime import datetime
+import uuid
+from pathlib import Path
+from pydantic import BaseModel, Field
+from concurrent.futures import ThreadPoolExecutor 
+from requests.exceptions import RequestException 
+from utils import get_modern_browser_headers
+
+# Configuration du logging avec deux niveaux différents
+log_file = 'app.log'
+
+# Créer un filtre pour les logs de progression uniquement
+class ProgressFilter(logging.Filter):
+    def filter(self, record):
+        # Accepter uniquement les logs contenant 'Progression' ou quelques autres mots clés importants
+        progress_keywords = ['Progression', 'Début de', 'terminée', 'traitées', 'Traitement du lot', 'Analyse HTTP']
+        return any(keyword in record.getMessage() for keyword in progress_keywords)
+
+# Configurer le logger racine
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# Formatter pour les logs
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+# Handler pour la console (logs de progression uniquement)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+console_handler.addFilter(ProgressFilter())  # Ajouter le filtre pour n'afficher que les logs de progression
+root_logger.addHandler(console_handler)
+
+# Handler pour le fichier (tous les logs)
+try:
+    file_handler = logging.FileHandler(log_file, mode='a')
+    file_handler.setFormatter(log_formatter)
+    root_logger.addHandler(file_handler)
+    logging.info(f"Logs détaillés écrits dans {os.path.abspath(log_file)}")
+except Exception as e:
+    logging.warning(f"Impossible d'écrire les logs dans {log_file}: {e}")
+
+# Logger spécifique pour ce module
+logger = logging.getLogger(__name__)
+
+# Logger spécifique pour les logs frontend
+frontend_logger = logging.getLogger("frontend")
+frontend_logger.setLevel(logging.INFO)
+
+# --- Fonction synchrone pour tracer les redirections HTTP (version de secours) --- 
+def trace_http_redirection(start_url, max_redirects=20, timeout=10):
+    """Suit la chaîne de redirection HTTP pour une URL donnée en utilisant
+    le suivi automatique des redirections de requests.
+
+    Args:
+        start_url (str): L'URL de départ.
+        max_redirects (int): Nombre maximum de redirections à suivre.
+        timeout (int): Timeout en secondes pour chaque requête.
+
+    Returns:
+        tuple: (final_url: str | None, error: str | None, redirections_count: int)
+               Retourne l'URL finale, un message d'erreur éventuel et le nombre de redirections.
+    """
+    headers = {
+        'User-Agent': 'RedirectionTracer/1.0 (+https://github.com/VOTRE_USERNAME/RedirectionTracer)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3',
+    }
+    
+    logging.info(f"-- Début trace HTTP pour: {start_url}")
+    
+    try:
+        # Configurer une session pour contrôler les redirections
+        session = requests.Session()
+        
+        # Utiliser le suivi automatique des redirections
+        response = session.get(
+            start_url,
+            headers=headers,
+            timeout=timeout,
+            allow_redirects=True  # Laisser requests suivre les redirections
+        )
+        
+        # Récupérer l'historique des redirections
+        history = response.history
+        final_url = response.url
+        redirections_count = len(history)
+        
+        # Afficher l'historique des redirections dans les logs
+        if history:
+            logging.info(f"    -> Chaîne de redirection ({redirections_count} sauts):")
+            for i, r in enumerate(history):
+                logging.info(f"       {i+1}. {r.status_code} {r.url} -> {r.headers.get('Location')}")
+            logging.info(f"    -> URL finale: {final_url} (code {response.status_code})")
+        else:
+            logging.info(f"    -> Pas de redirection. URL finale: {final_url} (code {response.status_code})")
+        
+        return final_url, None, redirections_count
+        
+    except requests.exceptions.TooManyRedirects:
+        logging.warning(f"   -> Erreur: Trop de redirections (> {max_redirects}) pour {start_url}")
+        return None, f"Trop de redirections (> {max_redirects})", 0
+        
+    except requests.exceptions.Timeout:
+        logging.error(f"   -> Erreur: Timeout lors de la requête vers {start_url}")
+        return None, f"Timeout pour {start_url}", 0
+        
+    except requests.exceptions.ConnectionError as e:
+        logging.error(f"   -> Erreur: Problème de connexion vers {start_url}: {e}")
+        return None, f"Erreur de connexion pour {start_url}", 0
+        
+    except requests.exceptions.RequestException as e:
+        status_code = getattr(e.response, 'status_code', "N/A") if hasattr(e, 'response') else "N/A"
+        logging.error(f"   -> Erreur: Requête vers {start_url} échouée: {status_code} - {e}")
+        return None, f"Erreur {status_code} pour {start_url}", 0
+
+
+# --- Nouvelle fonction asynchrone pour tracer les redirections HTTP --- 
+async def trace_http_redirection_async(start_url, session, max_redirects=20, timeout=10):
+    """Version asynchrone de trace_http_redirection utilisant aiohttp.
+    
+    Args:
+        start_url (str): L'URL de départ.
+        session (aiohttp.ClientSession): Session aiohttp à utiliser pour les requêtes.
+        max_redirects (int): Nombre maximum de redirections à suivre.
+        timeout (int): Timeout en secondes pour chaque requête.
+        
+    Returns:
+        tuple: (final_url: str | None, error: str | None, redirections_count: int, http_status: int)
+               Retourne l'URL finale, un message d'erreur éventuel, le nombre de redirections et le code HTTP final.
+    """
+    # Utiliser les headers de navigateur moderne
+    headers = get_modern_browser_headers()
+    
+    logging.info(f"-- Début trace HTTP async pour: {start_url}")
+    
+    try:
+        # Désactiver le suivi automatique des redirections
+        async with session.get(start_url, allow_redirects=False, timeout=timeout) as response:
+            # Si pas de redirection, retourner l'URL actuelle
+            if response.status < 300 or response.status >= 400:
+                logging.info(f"    -> Pas de redirection. URL finale: {start_url} (code {response.status})")
+                return start_url, None, 0, response.status
+            
+            # Suivre les redirections manuellement
+            history = []
+            current_url = start_url
+            redirections_count = 0
+            
+            while response.status >= 300 and response.status < 400 and redirections_count < max_redirects:
+                history.append(response)
+                location = response.headers.get('Location')
+                
+                if not location:
+                    logging.warning(f"    -> Redirection sans en-tête Location pour {current_url}")
+                    break
+                
+                # Construire l'URL absolue si nécessaire
+                if location.startswith('/'):
+                    # URL relative au domaine
+                    parsed_url = urllib.parse.urlparse(current_url)
+                    next_url = f"{parsed_url.scheme}://{parsed_url.netloc}{location}"
+                elif not (location.startswith('http://') or location.startswith('https://')):
+                    # URL relative au chemin actuel
+                    next_url = urllib.parse.urljoin(current_url, location)
+                else:
+                    # URL absolue
+                    next_url = location
+                
+                logging.info(f"    -> Redirection {redirections_count+1}: {current_url} -> {next_url} (code {response.status})")
+                
+                # Suivre la redirection
+                current_url = next_url
+                redirections_count += 1
+                
+                # Faire la prochaine requête
+                response = await session.get(current_url, allow_redirects=False, timeout=timeout)
+            
+            # URL finale après toutes les redirections
+            final_url = current_url
+            final_status = response.status
+            
+            # Vérifier si on a atteint le nombre maximum de redirections
+            if redirections_count >= max_redirects:
+                logging.warning(f"    -> Trop de redirections (> {max_redirects}) pour {start_url}")
+                return None, f"Trop de redirections (> {max_redirects})", 0, 0
+            
+            redirections_count = len(history)
+            
+            # Afficher l'historique des redirections dans les logs
+            if history:
+                logging.info(f"    -> Chaîne de redirection async ({redirections_count} sauts):")
+                for i, r in enumerate(history):
+                    location = r.headers.get('Location', 'Unknown')
+                    logging.info(f"       {i+1}. {r.status} {r.url} -> {location}")
+                logging.info(f"    -> URL finale: {final_url} (code {final_status})")
+            else:
+                logging.info(f"    -> Pas de redirection. URL finale: {final_url} (code {final_status})")
+            
+            return final_url, None, redirections_count, final_status
+    
+    except aiohttp.ClientResponseError as e:
+        if e.status >= 300 and e.status < 400:
+            logging.warning(f"   -> Erreur: Trop de redirections (> {max_redirects}) pour {start_url}")
+            return None, f"Trop de redirections (> {max_redirects})", 0, 0
+        else:
+            logging.error(f"   -> Erreur: Status HTTP {e.status} pour {start_url}: {e}")
+            return None, f"Erreur HTTP {e.status}", 0, e.status
+            
+    except asyncio.TimeoutError:
+        logging.error(f"   -> Erreur: Timeout lors de la requête async vers {start_url}")
+        return None, f"Timeout pour {start_url}", 0, 0
+        
+    except aiohttp.ClientConnectorError as e:
+        logging.error(f"   -> Erreur: Problème de connexion async vers {start_url}: {e}")
+        return None, f"Erreur de connexion pour {start_url}", 0, 0
+        
+    except Exception as e:
+        logging.error(f"   -> Erreur inattendue lors de la requête async vers {start_url}: {e}")
+        return None, f"Erreur inattendue: {str(e)}", 0, 0
+
+# Modèle pour les logs frontend
+class FrontendLog(BaseModel):
+    level: str = "info"
+    message: str
+    context: Optional[Dict[str, Any]] = None
+    timestamp: Optional[str] = None
+
+# Modèles Pydantic pour l'API
+class RedirectionResult(BaseModel):
+    line: int
+    source: str
+    target: str
+    final: str
+    redirections_count: int
+    status: str
+    http_status: int
+    target_status: Optional[int] = None
+    conclusion: str
+
+class RedirectionStats(BaseModel):
+    total: int
+    correct_count: int
+    incorrect_count: int
+    error_count: int
+    multi_redirect_count: int
+
+class RedirectionResponse(BaseModel):
+    filename: str
+    stats: RedirectionStats
+    details: List[RedirectionResult]
+
+class UploadResponse(BaseModel):
+    task_id: str
+    message: str
+
+class TaskStatus(BaseModel):
+    task_id: str
+    status: str  # 'pending', 'completed', 'failed'
+    progress: float  # 0.0 à 1.0
+    message: Optional[str] = None
+
+# Fonction utilitaire pour obtenir des headers modernes de navigateur
+def get_modern_browser_headers():
+    """Retourne des headers HTTP qui simulent un navigateur moderne (Chrome sur macOS).
+    
+    Returns:
+        dict: Headers HTTP pour simuler un navigateur moderne.
+    """
+    return {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'fr,fr-FR;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
+    }
+
+# Configuration de l'application
+app = FastAPI(title="RedirectionTracer API", 
+              description="API pour analyser les redirections d'URLs",
+              version="1.0.0")
+
+# Configuration CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En production, spécifiez les origines exactes
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Configuration des templates et fichiers statiques
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Stockage des tâches en cours (dans une vraie application, utilisez une base de données)
+tasks = {}
+
+
+# Routes pour le rendu des pages HTML
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    """Page d'accueil de l'application - Redirige vers la version Vue.js."""
+    return RedirectResponse(url="/vue", status_code=303)
+
+@app.get("/vue")
+async def read_vue(request: Request):
+    """Page d'accueil utilisant Vue.js."""
+    return templates.TemplateResponse("vue-index.html", {"request": request})
+
+@app.get("/results/{task_id}", response_class=HTMLResponse)
+async def show_results(request: Request, task_id: str):
+    """Rendu de la page de résultats"""
+    if task_id not in tasks or tasks[task_id]["status"] != "completed":
+        return RedirectResponse(url="/")
+    
+    return templates.TemplateResponse("resultats.html", {
+        "request": request,
+        "task_id": task_id
+    })
+
+# API Endpoints
+@app.post("/api/upload", response_model=UploadResponse)
+async def upload_file_api(background_tasks: BackgroundTasks, 
+                     file: UploadFile = File(...), 
+                     domain_prefix: str = Form(...)):
+    """Upload d'un fichier CSV pour analyse"""
+    # Vérifier l'extension du fichier
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Veuillez télécharger un fichier CSV.")
+    
+    # Créer un ID unique pour cette tâche
+    task_id = str(uuid.uuid4())
+    
+    # Lire le contenu du fichier
+    contents = await file.read()
+    try:
+        # Décoder le contenu en UTF-8
+        text = contents.decode('utf-8')
+    except UnicodeDecodeError:
+        # Si UTF-8 échoue, essayer avec ISO-8859-1 (latin1)
+        text = contents.decode('iso-8859-1')
+    
+    # Stocker les informations de la tâche
+    tasks[task_id] = {
+        "status": "pending",
+        "progress": 0.0,
+        "filename": file.filename,
+        "domain_prefix": domain_prefix,
+        "csv_content": text,
+        "result": None
+    }
+    
+    # Démarrer la tâche d'analyse en arrière-plan
+    background_tasks.add_task(process_csv_task, task_id)
+    
+    return UploadResponse(
+        task_id=task_id,
+        message="Fichier CSV reçu et en cours de traitement"
+    )
+
+@app.get("/api/task/{task_id}/status", response_model=TaskStatus)
+async def get_task_status(task_id: str):
+    """Vérifier le statut d'une tâche d'analyse"""
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail="Tâche non trouvée")
+    
+    task_info = tasks[task_id]
+    return TaskStatus(
+        task_id=task_id,
+        status=task_info["status"],
+        progress=task_info["progress"],
+        message=task_info.get("message")
+    )
+
+@app.get("/api/task/{task_id}/results", response_model=RedirectionResponse)
+async def get_task_results(task_id: str):
+    """Récupérer les résultats d'une tâche d'analyse terminée"""
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail="Tâche non trouvée")
+    
+    task_info = tasks[task_id]
+    if task_info["status"] != "completed":
+        raise HTTPException(status_code=400, detail="La tâche n'est pas encore terminée")
+    
+    return task_info["result"]
+
+# Endpoint pour recevoir les logs du frontend
+@app.post("/api/logs")
+async def log_frontend_message(log: FrontendLog):
+    # Déterminer le niveau de log
+    log_level = getattr(logging, log.level.upper(), logging.INFO)
+    
+    # Formater le message avec le contexte si disponible
+    message = log.message
+    if log.context:
+        context_str = ", ".join([f"{k}={v}" for k, v in log.context.items()])
+        message = f"{message} - Context: {{{context_str}}}"
+    
+    # Ajouter un préfixe pour identifier les logs frontend
+    message = f"[FRONTEND] {message}"
+    
+    # Enregistrer le message avec le niveau approprié
+    frontend_logger.log(log_level, message)
+    
+    return {"status": "success"}
+
+# Route de compatibilité pour l'ancienne interface
+@app.post("/upload")
+async def upload_file_legacy(request: Request, file: UploadFile = File(...), domain_prefix: str = Form(...)):
+    """Version légacy de l'upload pour compatibilité avec l'ancienne interface"""
+    # Rediriger vers la nouvelle API
+    response = await upload_file_api(BackgroundTasks(), file, domain_prefix)
+    return RedirectResponse(url=f"/results/{response.task_id}", status_code=303)
+
+# Fonction pour traiter le CSV en arrière-plan
+async def process_csv_task(task_id: str):
+    """Traite un fichier CSV en arrière-plan et met à jour le statut de la tâche"""
+    task_info = tasks[task_id]
+    domain_prefix = task_info["domain_prefix"]
+    csv_content = task_info["csv_content"]
+    filename = task_info["filename"]
+    
+    # Initialiser les statistiques
+    stats = {
+        "total": 0,
+        "correct_count": 0,
+        "incorrect_count": 0,
+        "error_count": 0,
+        "multi_redirect_count": 0
+    }
+    
+    details = []
+    
+    try:
+        # Mettre à jour le statut pour indiquer que le traitement a commencé
+        tasks[task_id]["status"] = "processing"
+        tasks[task_id]["message"] = "Analyse des redirections en cours..."
+        tasks[task_id]["progress"] = 0.01  # Démarrer à 1% pour montrer que ça a commencé
+        
+        # Lire le CSV
+        reader = csv.reader(csv_content.splitlines())
+        rows = list(reader)
+        total_rows = len(rows)
+        
+        # Vérifier si le fichier est vide
+        if total_rows == 0:
+            raise ValueError("Le fichier CSV est vide.")
+            
+        # Vérifier si la première ligne contient des en-têtes
+        first_row = rows[0]
+        has_headers = False
+        if len(first_row) >= 2:
+            # Vérifier si la première ligne contient des mots comme "URL", "Source", "Cible", etc.
+            header_keywords = ["url", "source", "cible", "target", "destination"]
+            first_row_text = " ".join(first_row).lower()
+            if any(keyword in first_row_text for keyword in header_keywords):
+                has_headers = True
+                logging.info(f"En-têtes détectés dans le CSV: {first_row}")
+                # Ignorer la première ligne pour le traitement
+                rows = rows[1:]
+                total_rows -= 1
+                
+        if total_rows == 0:
+            raise ValueError("Le fichier CSV ne contient que des en-têtes, aucune donnée à traiter.")
+                
+        logging.info(f"Traitement de {total_rows} lignes de données CSV{' (en-têtes ignorés)' if has_headers else ''}.")
+        
+        # Mettre à jour le message avec le nombre de lignes détectées
+        tasks[task_id]["message"] = f"Analyse de {total_rows} lignes en cours..."
+        
+        # Créer une session aiohttp pour les requêtes HTTP
+        async with aiohttp.ClientSession() as session:
+            # Traiter le fichier CSV par lots pour éviter de surcharger le serveur
+            batch_size = 10
+            processed_count = 0
+            
+            # Traiter par lots
+            for i in range(0, total_rows, batch_size):
+                # Extraire le lot actuel
+                batch_end = min(i + batch_size, total_rows)
+                current_batch = []
+                
+                # Mettre à jour le message pour indiquer le traitement du lot
+                batch_start = processed_count + 1
+                batch_end_display = processed_count + (batch_end - i)
+                tasks[task_id]["message"] = f"Traitement du lot {batch_start}-{batch_end_display} sur {total_rows} lignes..."
+                logging.info(f"Traitement du lot {batch_start}-{batch_end_display} sur {total_rows} lignes...")
+                
+                # Préparer le lot actuel
+                for j in range(i, batch_end):
+                    try:
+                        row = rows[j]
+                        if len(row) < 2:
+                            logging.warning(f"Ligne {j+1}{' (après en-tête)' if has_headers else ''} ignorée: format incorrect (moins de 2 colonnes)")
+                            continue
+                            
+                        # Ajuster le numéro de ligne pour tenir compte des en-têtes dans les messages
+                        display_line_num = j + 1 + (1 if has_headers else 0)
+                        
+                        source_url = row[0].strip()
+                        target_url = row[1].strip()
+                        
+                        # Vérifier si les URLs sont valides
+                        if not source_url or not target_url:
+                            logging.warning(f"Ligne {display_line_num} ignorée: URL source ou cible vide")
+                            continue
+                            
+                        # Construire les URLs absolues si nécessaire
+                        source_url_absolute = source_url
+                        if not source_url.startswith(('http://', 'https://')) and domain_prefix:
+                            if source_url.startswith('/'):
+                                source_url_absolute = urljoin(domain_prefix, source_url)
+                            else:
+                                source_url_absolute = urljoin(f"{domain_prefix}/", source_url)
+                        
+                        target_url_absolute = target_url
+                        if not target_url.startswith(('http://', 'https://')) and domain_prefix:
+                            if target_url.startswith('/'):
+                                target_url_absolute = urljoin(domain_prefix, target_url)
+                            else:
+                                target_url_absolute = urljoin(f"{domain_prefix}/", target_url)
+                        
+                        current_batch.append({
+                            "line_num": display_line_num,
+                            "source": source_url,
+                            "target": target_url,
+                            "source_absolute": source_url_absolute,
+                            "target_absolute": target_url_absolute
+                        })
+                    except Exception as e:
+                        logging.error(f"Erreur lors de la préparation de la ligne {j+1}: {e}")
+                
+                # Traiter le lot actuel
+                batch_results = await process_url_batch(current_batch, domain_prefix, session)
+                details.extend(batch_results)
+                processed_count += len(current_batch)
+                
+                # Mettre à jour la progression
+                current_progress = min(0.99, processed_count / total_rows)  # Max 99% jusqu'à la fin
+                tasks[task_id]["progress"] = current_progress
+                
+                # Mettre à jour le message tous les 10% de progression
+                percent_done = int(current_progress * 100)
+                tasks[task_id]["message"] = f"Analyse en cours... {percent_done}% ({processed_count}/{total_rows} lignes)"
+                        # Mettre à jour les statistiques intermédiaires
+                        interim_stats = calculate_stats(details)
+                        tasks[task_id]["interim_stats"] = interim_stats
+            
+            # Traiter le dernier lot s'il reste des éléments
+            if batch:
+                # Mettre à jour le message pour indiquer le traitement du dernier lot
+                batch_start = processed_count + 1
+                batch_end = processed_count + len(batch)
+                tasks[task_id]["message"] = f"Traitement des URLs {batch_start}-{batch_end} sur {total_rows}..."
+                
+                batch_results = await process_url_batch(batch, domain_prefix, session)
+                details.extend(batch_results)
+        
+        # Mettre à jour le message pour indiquer la finalisation
+        tasks[task_id]["message"] = "Finalisation des résultats..."
+        tasks[task_id]["progress"] = 0.95  # 95% terminé
+        
+        # Calculer les statistiques finales
+        stats = calculate_stats(details)
+        
+        # Préparer le résultat
+        result = RedirectionResponse(
+            filename=filename,
+            stats=RedirectionStats(**stats),
+            details=[RedirectionResult(**detail) for detail in details]
+        )
+        
+        # Mettre à jour le statut de la tâche
+        tasks[task_id]["status"] = "completed"
+        tasks[task_id]["progress"] = 1.0
+        tasks[task_id]["result"] = result
+        tasks[task_id]["message"] = f"Analyse terminée. {stats['total']} URLs traitées."
+        
+    except Exception as e:
+        # En cas d'erreur, mettre à jour le statut de la tâche
+        tasks[task_id]["status"] = "failed"
+        tasks[task_id]["message"] = f"Erreur: {str(e)}"
+        tasks[task_id]["progress"] = 0.0
+        
+        # Logs détaillés pour le débogage
+        import traceback
+        error_traceback = traceback.format_exc()
+        logging.error(f"Erreur lors du traitement de la tâche {task_id}: {e}")
+        logging.error(f"Détails de l'erreur: {error_traceback}")
+        logging.error(f"Contenu de la tâche: {tasks[task_id]}")
+        
+        # Ajouter les détails de l'erreur au message de la tâche
+        tasks[task_id]["error_details"] = error_traceback
+
+# Fonction utilitaire pour calculer les statistiques
+def calculate_stats(details):
+    """Calcule les statistiques à partir des détails d'analyse"""
+    stats = {
+        "total": len(details),
+        "correct_count": 0,
+        "incorrect_count": 0,
+        "error_count": 0,
+        "multi_redirect_count": 0
+    }
+    
+    for detail in details:
+        if detail["status"] == "CORRECT":
+            stats["correct_count"] += 1
+        elif detail["status"] == "INCORRECT":
+            stats["incorrect_count"] += 1
+        elif detail["status"] == "ERREUR":
+            stats["error_count"] += 1
+        
+        if detail["redirections_count"] > 1:
+            stats["multi_redirect_count"] += 1
+    
+    return stats
+
+# Fonction pour traiter un lot d'URLs en parallèle
+async def process_url_batch(batch, domain_prefix, session):
+    """Traite un lot d'URLs en parallèle.
+    
+    Args:
+        batch (list): Liste de dictionnaires contenant les paires source/target à traiter.
+        domain_prefix (str): Préfixe de domaine à ajouter aux URLs relatives.
+        session (aiohttp.ClientSession): Session aiohttp pour les requêtes HTTP.
+        
+    Returns:
+        list: Liste des résultats d'analyse pour chaque URL du lot.
+    """
+    results = []
+    
+    # Vérifier les statuts des URLs cibles en parallèle
+    target_status_tasks = []
+    for item in batch:
+        task = asyncio.create_task(check_url_status(item["target_absolute"], session))
+        target_status_tasks.append((item["target_absolute"], task))
+    
+    # Récupérer les statuts des URLs cibles
+    target_status_results = {}
+    for target_url, task in target_status_tasks:
+        try:
+            status = await task
+            target_status_results[target_url] = status
+        except Exception as e:
+            logging.error(f"Erreur lors de la vérification du statut de {target_url}: {e}")
+            target_status_results[target_url] = 0
+    
+    # Traiter chaque URL du lot
+    for item in batch:
+        try:
+            # Récupérer les informations de l'URL
+            line_num = item["line_num"]
+            source_url = item["source"]
+            target_url = item["target"]
+            source_url_absolute = item["source_absolute"]
+            target_url_absolute = item["target_absolute"]
+            
+            # Tracer les redirections pour cette URL
+            final_url, error_message, redirections_count, http_status = await trace_http_redirection_async(source_url_absolute, session)
+            
+            # Récupérer le statut HTTP de l'URL cible
+            target_status = target_status_results.get(target_url_absolute, 0)
+            
+            # Déterminer le statut de la redirection
+            if error_message:
+                conclusion = f"ERREUR: {error_message}"
+                final_display = "N/A"
+                status = "ERREUR"
+            elif final_url is None:
+                conclusion = f"ERREUR: Impossible de suivre la redirection"
+                final_display = "N/A"
+            elif target_status >= 300 and target_status < 400:
+                target_status_class = "3xx"
+            elif target_status >= 400 and target_status < 500:
+                target_status_class = "4xx"
+            elif target_status >= 500:
+                target_status_class = "5xx"
+                
+            results.append({
+                "line": line_num,
+                "source": source_url_csv,
+                "source_absolute": source_url_absolute,
+                "target": target_url_csv,
+                "target_absolute": target_url_absolute,
+                "final": f"(Erreur: Exception non gérée)",
+                "redirections_count": 0,
+                "conclusion": f"ERREUR: Exception non gérée: {str(e)}",
+                "status": "ERREUR",
+                "http_status": 0,
+                "status_class": "",
+                "target_status": target_status,
+                "target_status_class": target_status_class
+            })
+    
+    return results
+    
+async def check_url_status(url, session, timeout=10):
+    """Vérifie le statut HTTP d'une URL.
+    
+    Args:
+        url (str): L'URL à vérifier.
+        session (aiohttp.ClientSession): Session aiohttp à utiliser pour les requêtes.
+        timeout (int): Timeout en secondes pour la requête.
+        
+    Returns:
+        int: Le code de statut HTTP ou 0 en cas d'erreur.
+    """
+    # Utiliser les headers de navigateur moderne
+    headers = get_modern_browser_headers()
+    
+    try:
+        async with session.get(url, allow_redirects=True, timeout=timeout) as response:
+            return response.status
+    except Exception as e:
+        logging.error(f"Erreur lors de la vérification du statut de {url}: {e}")
+        return 0
+        task = task_info["task"]
+        line_num = task_info["line_num"]
+        source_url_csv = task_info["source"]
+        target_url_csv = task_info["target"]
+        source_url_absolute = task_info["source_absolute"]
+        target_url_absolute = task_info["target_absolute"]
+        
+        try:
+            # Récupérer le résultat de la tâche
+            final_url_live, error_msg, redirections_count, http_status = await task
+            
+            # Récupérer le statut HTTP de l'URL cible
+            target_status = target_status_results.get(target_url_absolute, 0)
+            
+            # Déterminer la conclusion
+            if error_msg:
+                conclusion = f"ERREUR: {error_msg}"
+                final_display = f"(Erreur: {error_msg})"
+                redirections_count = 0  # Pas de redirections en cas d'erreur
+                status = "ERREUR"
+                status_code = http_status if http_status else 0
+            elif final_url_live == target_url_absolute:
+                if redirections_count > 1:
+                    conclusion = f"CORRECT (avec {redirections_count} redirections): La redirection aboutit bien à l'URL cible attendue."
+                else:
+                    conclusion = "CORRECT: La redirection aboutit bien à l'URL cible attendue."
+                final_display = final_url_live
+                status = "CORRECT"
+                status_code = http_status
+            else:
+                if redirections_count > 1:
+                    conclusion = f"INCORRECT (avec {redirections_count} redirections): La redirection aboutit à une URL différente de celle attendue."
+                else:
+                    conclusion = f"INCORRECT: La redirection aboutit à une URL différente de celle attendue."
+                final_display = final_url_live
+                status = "INCORRECT"
+                status_code = http_status
+            
+            # Déterminer la classe du statut HTTP
+            status_class = ""
+            if status_code >= 200 and status_code < 300:
+                status_class = "2xx"
+            elif status_code >= 300 and status_code < 400:
+                status_class = "3xx"
+            elif status_code >= 400 and status_code < 500:
+                status_class = "4xx"
+            elif status_code >= 500:
+                status_class = "5xx"
+            
+            # Déterminer la classe du statut HTTP de l'URL cible
+            target_status_class = ""
+            if target_status >= 200 and target_status < 300:
+                target_status_class = "2xx"
+            elif target_status >= 300 and target_status < 400:
+                target_status_class = "3xx"
+            elif target_status >= 400 and target_status < 500:
+                target_status_class = "4xx"
+            elif target_status >= 500:
+                target_status_class = "5xx"
+            
+            # Ajouter le résultat à la liste
+            results.append({
+                "line": line_num,
+                "source": source_url_csv,
+                "source_absolute": source_url_absolute,
+                "target": target_url_csv,
+                "target_absolute": target_url_absolute,
+                "final": final_display,
+                "redirections_count": redirections_count,
+                "conclusion": conclusion,
+                "status": status,
+                "http_status": status_code,
+                "status_class": status_class,
+                "target_status": target_status,
+                "target_status_class": target_status_class
+            })
+            
+        except Exception as e:
+            logger.error(f"Erreur lors du traitement de l'URL {source_url_absolute}: {e}")
+            # Récupérer le statut HTTP de l'URL cible même en cas d'erreur
+            target_status = target_status_results.get(target_url_absolute, 0)
+            
+            # Déterminer la classe du statut HTTP de l'URL cible
+            target_status_class = ""
+            if target_status >= 200 and target_status < 300:
+                target_status_class = "2xx"
+            elif target_status >= 300 and target_status < 400:
+                target_status_class = "3xx"
+            elif target_status >= 400 and target_status < 500:
+                target_status_class = "4xx"
+            elif target_status >= 500:
+                target_status_class = "5xx"
+                
+            results.append({
+                "line": line_num,
+                "source": source_url_csv,
+                "source_absolute": source_url_absolute,
+                "target": target_url_csv,
+                "target_absolute": target_url_absolute,
+                "final": f"(Erreur: Exception non gérée)",
+                "redirections_count": 0,
+                "conclusion": f"ERREUR: Exception non gérée: {str(e)}",
+                "status": "ERREUR",
+                "http_status": 0,
+                "status_class": "",
+                "target_status": target_status,
+                "target_status_class": target_status_class
+            })
+    
+    return results
+
+
+@app.post("/detect-loops")
+async def process_redirections(request: Request, file: UploadFile = File(...), domain_prefix: str = Form(None)):
+    """Traite le fichier CSV uploadé pour analyser les redirections HTTP réelles."""
+    start_time = time.time()
+    content = await file.read()
+    filename = file.filename
+    logger.info(f"Fichier reçu: {filename}, Type: {file.content_type}")
+    if domain_prefix:
+        logger.info(f"Préfixe de domaine fourni: {domain_prefix}")
+    else:
+        logger.info("Aucun préfixe de domaine fourni.")
+
+    try:
+        decoded_content = content.decode('utf-8')
+    except UnicodeDecodeError:
+        try:
+            decoded_content = content.decode('iso-8859-1') 
+            logger.warning("Encodage UTF-8 échoué, tentative avec ISO-8859-1.")
+        except UnicodeDecodeError:
+             logger.error("Impossible de décoder le fichier (ni UTF-8, ni ISO-8859-1).")
+             return templates.TemplateResponse("error.html", {"request": request, "message": "Impossible de lire le fichier CSV. Vérifiez son encodage (UTF-8 recommandé)."})
+
+    csvfile = StringIO(decoded_content)
+    reader = csv.DictReader(csvfile)
+    
+    # Définir les formats d'en-têtes possibles
+    header_formats = [
+        {"source": "source_url", "target": "target_url"},  # Format original
+        {"source": "URL Source", "target": "URL Target"}   # Nouveau format
+    ]
+    
+    # Vérifier si l'un des formats d'en-têtes est présent
+    headers_valid = False
+    used_format = None
+    
+    if reader.fieldnames:
+        for format in header_formats:
+            if all(h in reader.fieldnames for h in format.values()):
+                headers_valid = True
+                used_format = format
+                break
+    
+    if not headers_valid:
+        headers_found = reader.fieldnames if reader.fieldnames else "Aucun"
+        logger.error(f"En-têtes CSV manquants ou incorrects. Formats acceptés: {header_formats}, Trouvé: {headers_found}")
+        return templates.TemplateResponse("error.html", {"request": request, "message": f"Le fichier CSV doit contenir les colonnes 'source_url' et 'target_url' OU 'URL Source' et 'URL Target'. En-têtes trouvés: {headers_found}"})
+
+    original_pairs = []
+    try:
+        for i, row in enumerate(reader):
+            source_key = used_format["source"]
+            target_key = used_format["target"]
+            
+            original_pairs.append({
+                "source": row[source_key].strip(), 
+                "target": row[target_key].strip(),
+                "line_num": i + 2  # +2 car ligne 1 = en-têtes, et index 0-based
+            })
+    except csv.Error as e:
+         logger.error(f"Erreur lors de la lecture du CSV: {e}")
+         return templates.TemplateResponse("error.html", {"request": request, "message": f"Erreur lors de la lecture du fichier CSV à la ligne {reader.line_num}: {e}"})
+
+    num_pairs = len(original_pairs)
+    logger.info(f"{num_pairs} paires de redirection lues depuis le CSV.")
+    
+    # Paramètres pour le traitement parallèle
+    batch_size = 10  # Nombre d'URLs à traiter en parallèle
+    redirection_details = []
+    
+    # Traiter les URLs en parallèle par lots
+    logger.info(f"Début de l'analyse HTTP asynchrone pour {num_pairs} redirections du fichier.")
+    
+    # Configurer les paramètres de la session aiohttp
+    connector = aiohttp.TCPConnector(limit=batch_size, force_close=True, enable_cleanup_closed=True)
+    timeout = ClientTimeout(total=30)  # 30 secondes de timeout total
+    
+    # Traiter les URLs en lots
+    async with ClientSession(connector=connector, timeout=timeout) as session:
+        for i in range(0, num_pairs, batch_size):
+            batch = original_pairs[i:i+batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (num_pairs + batch_size - 1) // batch_size
+            
+            logger.info(f"Traitement du lot {batch_num}/{total_batches} (URLs {i+1}-{min(i+batch_size, num_pairs)}/{num_pairs})")
+            
+            # Traiter ce lot en parallèle
+            batch_results = await process_url_batch(batch, domain_prefix, session)
+            redirection_details.extend(batch_results)
+            
+            # Afficher la progression
+            progress_pct = min(100, (i + len(batch)) / num_pairs * 100)
+            logger.info(f"Progression analyse HTTP: {i + len(batch)}/{num_pairs} lignes traitées ({progress_pct:.1f}%).")
+    
+    # Trier les résultats par numéro de ligne pour maintenir l'ordre original
+    redirection_details.sort(key=lambda x: x["line"])
+    
+    elapsed_time = time.time() - start_time
+    logger.info(f"Analyse HTTP terminée en {elapsed_time:.2f} secondes.")
+    logger.info(f"Vitesse moyenne: {num_pairs / elapsed_time:.2f} URLs/seconde.")
+    
+    # Statistiques sur les résultats
+    correct_count = sum(1 for d in redirection_details if d["status"] == "CORRECT")
+    incorrect_count = sum(1 for d in redirection_details if d["status"] == "INCORRECT")
+    error_count = sum(1 for d in redirection_details if d["status"] == "ERREUR")
+    multi_redirect_count = sum(1 for d in redirection_details if d["redirections_count"] > 1)
+    
+    logger.info(f"Résultats: {correct_count} corrects, {incorrect_count} incorrects, {error_count} erreurs, {multi_redirect_count} redirections multiples.")
+    
+    # Logs détaillés pour le débogage
+    logger.info(f"Détails des données envoyées au template:")
+    logger.info(f"Nombre total d'entrées: {len(redirection_details)}")
+    for i, detail in enumerate(redirection_details):
+        logger.info(f"Entrée {i+1}:")
+        logger.info(f"  - Ligne: {detail.get('line', 'N/A')}")
+        logger.info(f"  - Source: {detail.get('source', 'N/A')}")
+        logger.info(f"  - Target: {detail.get('target', 'N/A')}")
+        logger.info(f"  - Final: {detail.get('final', 'N/A')}")
+        logger.info(f"  - Redirections: {detail.get('redirections_count', 'N/A')}")
+        logger.info(f"  - Conclusion: {detail.get('conclusion', 'N/A')}")
+
+
+    # Préparer les données pour le template
+    template_data = {
+        "request": request,
+        "details": redirection_details,
+        "details_json": json.dumps(redirection_details), 
+        "filename": filename,
+        "domain_prefix_used": domain_prefix,
+        "analysis_type": "Analyse HTTP en direct",
+        # Statistiques précalculées pour le template
+        "stats": {
+            "total": len(redirection_details),
+            "correct_count": correct_count,
+            "incorrect_count": incorrect_count,
+            "error_count": error_count,
+            "multi_redirect_count": multi_redirect_count
+        }
+    }
+    
+    # Log des données envoyées au template
+    logger.info(f"Envoi des données au template: {len(redirection_details)} entrées, {correct_count} corrects, {incorrect_count} incorrects, {error_count} erreurs")
+    
+    return templates.TemplateResponse("resultats.html", template_data)

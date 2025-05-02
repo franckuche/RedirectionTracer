@@ -1,0 +1,20 @@
+<tbody id="results-table-body" class="bg-white" hx-swap-oob="true">
+{% if details|length == 0 %}
+<tr>
+    <td colspan="6" class="px-6 py-8 text-center text-gray-500 border-b border-secondary-200">
+        <p class="text-lg font-medium">Aucun résultat ne correspond à ce filtre</p>
+    </td>
+</tr>
+{% else %}
+    {% for detail in details %}
+    <tr class="{% if detail.status == 'CORRECT' %}bg-success-50{% elif detail.status == 'INCORRECT' %}bg-warning-50{% else %}bg-danger-50{% endif %} border-b border-secondary-200 hover:bg-secondary-50 transition-colors duration-150">
+        <td class="px-6 py-4 text-sm font-medium text-secondary-900 border-r border-secondary-200">{{ detail.line_num }}</td>
+        <td class="px-6 py-4 text-sm text-secondary-800 border-r border-secondary-200 max-w-xs truncate" title="{{ detail.source }}">{{ detail.source }}</td>
+        <td class="px-6 py-4 text-sm text-secondary-800 border-r border-secondary-200 max-w-xs truncate" title="{{ detail.target }}">{{ detail.target }}</td>
+        <td class="px-6 py-4 text-sm text-secondary-800 border-r border-secondary-200 max-w-xs truncate" title="{{ detail.final }}">{{ detail.final }}</td>
+        <td class="px-6 py-4 text-sm font-medium text-center border-r border-secondary-200 {% if detail.http_status >= 400 %}text-danger-600{% elif detail.http_status >= 300 %}text-warning-600{% else %}text-success-600{% endif %}">{{ detail.http_status }}</td>
+        <td class="px-6 py-4 text-sm text-secondary-800">{{ detail.conclusion }}</td>
+    </tr>
+    {% endfor %}
+{% endif %}
+</tbody>

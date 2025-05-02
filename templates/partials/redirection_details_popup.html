@@ -1,0 +1,43 @@
+<!-- Template pour le popup de détails de redirection -->
+<div id="redirection-details-popup" class="popup-overlay">
+    <div class="popup-content">
+        <div class="popup-header">
+            <h3>Détails de la redirection</h3>
+            <button type="button" class="close-popup">&times;</button>
+        </div>
+        <div class="popup-body">
+            <div class="detail-section">
+                <h4>URL Source:</h4>
+                <div class="detail-value" id="popup-source-url"></div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>URL Target attendue:</h4>
+                <div class="detail-value">
+                    <span id="popup-target-url"></span>
+                    <span class="http-code" id="popup-target-status"></span>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>URL Finale réelle:</h4>
+                <div class="detail-value">
+                    <span id="popup-final-url"></span>
+                    <span class="http-code" id="popup-http-status"></span>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>Nombre de redirections:</h4>
+                <div class="detail-value" id="popup-redirections-count"></div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>Conclusion:</h4>
+                <div class="detail-value">
+                    <span id="popup-conclusion" class="conclusion-text"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

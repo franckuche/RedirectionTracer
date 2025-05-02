@@ -1,0 +1,202 @@
+/* Styles pour les filtres et la recherche */
+
+/* Conteneur des filtres */
+.card-filters {
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid var(--border-light);
+  background-color: var(--bg-light);
+}
+
+.filters-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.filter-group {
+  margin-bottom: 1rem;
+}
+
+.filter-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+  font-family: var(--font-sans);
+}
+
+.filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.875rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  border-radius: var(--radius-md);
+  border: 1px solid #E4E7EC; /* Bordure fine et légèrement grisée */
+  background-color: white;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: none; /* Suppression de l'ombre */
+}
+
+/* Styles pour les boutons de filtre avec couleurs visibles tout le temps */
+.filter-btn[data-color="primary"] {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.filter-btn[data-color="ok"] {
+  background-color: var(--success);
+  border-color: var(--success);
+  color: white;
+}
+
+.filter-btn[data-color="warning"] {
+  background-color: var(--warning);
+  border-color: var(--warning);
+  color: white;
+}
+
+.filter-btn[data-color="error"] {
+  background-color: var(--error);
+  border-color: var(--error);
+  color: white;
+}
+
+.filter-btn[data-color="multiple"] {
+  background-color: var(--info);
+  border-color: var(--info);
+  color: white;
+}
+
+/* Style par défaut pour les autres boutons */
+.filter-btn:hover {
+  background-color: var(--bg-lighter);
+  border-color: var(--border-focus);
+}
+
+/* Styles spécifiques pour chaque type de filtre */
+.filter-btn[data-color="ok"].active {
+  background-color: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
+.filter-btn[data-color="warning"].active {
+  background-color: var(--warning);
+  color: white;
+  border-color: var(--warning);
+}
+
+.filter-btn[data-color="error"].active {
+  background-color: var(--error);
+  color: white;
+  border-color: var(--error);
+}
+
+.filter-btn[data-color="multiple"].active {
+  background-color: var(--info);
+  color: white;
+  border-color: var(--info);
+}
+
+/* Style par défaut pour les autres boutons actifs */
+.filter-btn.active {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* Styles pour la barre de recherche */
+.search-container {
+  width: 100%;
+  margin-bottom: 1.5rem;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.625rem 3rem 0.625rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid #E4E7EC; /* Bordure très fine et grisée */
+  /* Pas de background-color spécifique pour utiliser le fond normal */
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  font-family: var(--font-sans);
+  transition: all 0.2s ease;
+  box-shadow: none; /* Suppression de l'ombre */
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-light);
+}
+
+.search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.search-btn {
+  position: absolute;
+  right: 0.5rem;
+  background-color: var(--primary);
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  transition: background-color 0.2s ease;
+}
+
+.search-btn:hover {
+  background-color: var(--primary-dark);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 3rem;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0.5rem;
+  display: none;
+}
+
+.search-clear-btn:hover {
+  color: var(--text-secondary);
+}
+
+.search-input:not(:placeholder-shown) + .search-clear-btn {
+  display: block;
+}
+
+/* Style pour les résultats de recherche surlignés */
+.highlight-match {
+  background-color: rgba(255, 255, 0, 0.3);
+  padding: 0 2px;
+  border-radius: 2px;
+}

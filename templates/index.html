@@ -1,22 +1,268 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <title>Détection de boucles de redirection</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedirectionTracer - Analyseur de redirections HTTP</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Configuration Tailwind inspirée de PrimeVue -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                50: '#f5f9ff',
+                100: '#e0f1ff',
+                200: '#bae3ff',
+                300: '#7ec2ff',
+                400: '#4a9eff',
+                500: '#3B82F6', // Couleur primaire principale (bleu)
+                600: '#2563eb',
+                700: '#1d4ed8',
+                800: '#1e40af',
+                900: '#1e3a8a',
+              },
+              secondary: {
+                50: '#f8f9fa',
+                100: '#f1f3f5',
+                200: '#e9ecef',
+                300: '#dee2e6',
+                400: '#ced4da',
+                500: '#adb5bd',
+                600: '#868e96',
+                700: '#495057',
+                800: '#343a40',
+                900: '#212529',
+              },
+              success: {
+                500: '#22c55e',
+              },
+              warning: {
+                50: '#fffbeb',
+                500: '#f59e0b',
+                900: '#78350f',
+              },
+              danger: {
+                50: '#fef2f2',
+                500: '#ef4444',
+                700: '#b91c1c',
+                900: '#7f1d1d',
+              },
+            },
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+            },
+          }
+        }
+      }
+    </script>
+    
+    <!-- Styles CSS personnalisés -->
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+    
+    <!-- Police Inter -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    
+    <style>
+      /* Transitions Vue */
+      .fade-enter-active,
+      .fade-leave-active {
+        transition: opacity 0.3s;
+      }
+      
+      .fade-enter-from,
+      .fade-leave-to {
+        opacity: 0;
+      }
+    </style>
 </head>
-<body>
-    <h2>Uploader un fichier CSV de redirections</h2>
-    <form action="/detect-loops" enctype="multipart/form-data" method="post">
-        <div>
-            <label for="file">Fichier CSV :</label><br>
-            <input name="file" id="file" type="file" accept=".csv" required>
+<body class="bg-gray-50 font-sans">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- En-tête -->
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-primary-700 mb-2">RedirectionTracer</h1>
+            <p class="text-lg text-secondary-600">Détectez et analysez les redirections dans vos URLs</p>
+        </header>
+        
+        <!-- Formulaire d'upload -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8 max-w-2xl mx-auto">
+            <h2 class="text-xl font-semibold text-secondary-800 mb-4 pb-2 border-b border-secondary-200">Uploader un fichier CSV</h2>
+            
+            <!-- Message d'erreur -->
+            <div id="error-message" class="bg-danger-50 border-l-4 border-danger-500 p-4 mb-4 rounded hidden">
+                <p class="text-danger-700" id="error-text"></p>
+            </div>
+            
+            <form id="upload-form" hx-encoding="multipart/form-data" hx-post="/upload" hx-target="#results-container" hx-swap="outerHTML" hx-indicator="#loading-indicator" enctype="multipart/form-data">
+                <div class="mb-4">
+                    <label for="csv-file" class="block text-sm font-medium text-secondary-700 mb-1">Fichier CSV</label>
+                    <div id="file-upload-container" class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-secondary-300 border-dashed rounded-md hover:border-primary-400 transition-colors duration-200">
+                        <div class="space-y-1 text-center">
+                            <svg id="upload-icon" class="mx-auto h-12 w-12 text-secondary-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <svg id="success-icon" class="mx-auto h-12 w-12 text-success-500 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div id="file-select-text" class="flex text-sm text-secondary-600">
+                                <label for="csv-file" class="relative cursor-pointer rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500">
+                                    <span>Sélectionner un fichier</span>
+                                    <input id="csv-file" name="file" type="file" class="sr-only" accept=".csv" onchange="handleFileChange(this)">
+                                </label>
+                                <p class="pl-1">ou glisser-déposer</p>
+                            </div>
+                            <div id="file-selected-text" class="text-sm text-success-600 font-medium hidden"></div>
+                            <p id="file-size-hint" class="text-xs text-secondary-500">CSV uniquement (max 10MB)</p>
+                        </div>
+                    </div>
+                    <p class="text-sm text-secondary-500 mt-1">Format attendu: URL source, URL cible</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="domain_prefix" class="block text-sm font-medium text-secondary-700 mb-1">Préfixe de domaine (optionnel)</label>
+                    <input type="text" id="domain_prefix" name="domain_prefix" class="mt-1 block w-full border border-secondary-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="https://example.com">
+                    <p class="text-sm text-secondary-500 mt-1">Utilisé pour compléter les URLs relatives dans votre fichier CSV.</p>
+                </div>
+                
+                <div class="mb-4">
+                    <button type="submit" id="submit-button"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-secondary-400 cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                        <svg id="loading-indicator" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white htmx-indicator" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span id="button-text">Sélectionnez un fichier CSV</span>
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Indicateur de progression sera ajouté dynamiquement par HTMX -->
+            
+
+
         </div>
-        <div style="margin-top: 10px;">
-            <label for="domain_prefix">Préfixe de domaine (optionnel, ex: https://www.example.com) :</label><br>
-            <input name="domain_prefix" id="domain_prefix" type="text" size="50" placeholder="https://www.votredomaine.com">
-        </div>
-        <div style="margin-top: 15px;">
-            <input type="submit" value="Analyser les boucles">
-        </div>
-    </form>
+        
+        <!-- Conteneur pour les résultats -->
+        <div id="results-container"></div>
+        
+        <!-- Pied de page -->
+        <footer class="mt-12 text-center">
+            <p class="text-sm text-secondary-500">
+                RedirectionTracer &copy; 2025 - Analyseur de redirections HTTP
+            </p>
+        </footer>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="/static/js/logger.js"></script>
+    <script>
+        // Gestion du changement de fichier
+        function handleFileChange(input) {
+            const file = input.files[0];
+            const fileContainer = document.getElementById('file-upload-container');
+            const uploadIcon = document.getElementById('upload-icon');
+            const successIcon = document.getElementById('success-icon');
+            const fileSelectText = document.getElementById('file-select-text');
+            const fileSelectedText = document.getElementById('file-selected-text');
+            const submitButton = document.getElementById('submit-button');
+            const buttonText = document.getElementById('button-text');
+            
+            if (file) {
+                // Mettre à jour l'interface utilisateur
+                fileContainer.classList.add('border-primary-400', 'bg-primary-50');
+                fileContainer.classList.remove('border-secondary-300', 'border-dashed');
+                uploadIcon.classList.add('hidden');
+                successIcon.classList.remove('hidden');
+                fileSelectText.classList.add('hidden');
+                fileSelectedText.classList.remove('hidden');
+                
+                // Afficher le nom du fichier
+                fileSelectedText.textContent = file.name;
+                
+                // Activer le bouton de soumission
+                submitButton.classList.remove('bg-secondary-400', 'cursor-not-allowed');
+                submitButton.classList.add('bg-primary-600', 'hover:bg-primary-700');
+                buttonText.textContent = 'Analyser les redirections';
+                
+                // Logger l'événement
+                if (window.logger) {
+                    window.logger.info(`Fichier sélectionné: ${file.name}`);
+                }
+            } else {
+                // Réinitialiser l'interface utilisateur
+                resetFileUploadUI();
+            }
+        }
+        
+        // Fonction pour réinitialiser l'interface utilisateur
+        function resetFileUploadUI() {
+            const fileContainer = document.getElementById('file-upload-container');
+            const uploadIcon = document.getElementById('upload-icon');
+            const successIcon = document.getElementById('success-icon');
+            const fileSelectText = document.getElementById('file-select-text');
+            const fileSelectedText = document.getElementById('file-selected-text');
+            const submitButton = document.getElementById('submit-button');
+            const buttonText = document.getElementById('button-text');
+            const fileInput = document.getElementById('csv-file');
+            
+            // Réinitialiser le champ de fichier
+            if (fileInput) fileInput.value = '';
+            
+            // Réinitialiser l'interface utilisateur
+            fileContainer.classList.remove('border-primary-400', 'bg-primary-50');
+            fileContainer.classList.add('border-secondary-300', 'border-dashed');
+            uploadIcon.classList.remove('hidden');
+            successIcon.classList.add('hidden');
+            fileSelectText.classList.remove('hidden');
+            fileSelectedText.classList.add('hidden');
+            fileSelectedText.textContent = '';
+            
+            // Désactiver le bouton de soumission
+            submitButton.classList.add('bg-secondary-400', 'cursor-not-allowed');
+            submitButton.classList.remove('bg-primary-600', 'hover:bg-primary-700');
+            buttonText.textContent = 'Sélectionnez un fichier CSV';
+        }
+        
+        // Fonction supprimée car nous n'affichons plus la taille du fichier
+        
+        // Fonction pour télécharger les résultats en CSV
+        function downloadResults(button) {
+            const taskId = button.getAttribute('data-task-id');
+            window.location.href = `/api/task/${taskId}/download`;
+        }
+        
+        // Initialisation HTMX
+        document.addEventListener('DOMContentLoaded', function() {
+            // Ajouter des événements HTMX personnalisés si nécessaire
+            htmx.on('htmx:afterSwap', function(event) {
+                // Après un swap HTMX réussi, vérifier s'il y a des boutons de téléchargement
+                const downloadButtons = document.querySelectorAll('[data-action="download"]');
+                downloadButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        downloadResults(this);
+                    });
+                });
+                
+                // Vérifier s'il y a des boutons de réinitialisation
+                const resetButtons = document.querySelectorAll('[data-action="reset"]');
+                resetButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        resetFileUploadUI();
+                        document.getElementById('results-container').innerHTML = '';
+                    });
+                });
+            });
+        });
+    </script>
 </body>
 </html>

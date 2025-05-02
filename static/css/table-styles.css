@@ -1,0 +1,134 @@
+/* Styles pour le tableau des résultats détaillés */
+
+/* Amélioration des bords et de l'intégration avec la carte */
+.table-container {
+  margin: 0;
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+  background-color: var(--bg-primary);
+}
+
+.table th {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Cellules d'URL */
+.url-cell, .cell-url {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  position: relative;
+  display: table-cell; /* Maintient l'affichage en cellule */
+}
+
+.url-content {
+  display: inline-block;
+  max-width: 100%;
+  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.875rem;
+}
+
+/* Tooltip pour afficher l'URL complète */
+.tooltip {
+  position: relative;
+}
+
+.tooltip .tooltip-text {
+  visibility: hidden;
+  width: auto;
+  max-width: 400px;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  text-align: left;
+  border-radius: 6px;
+  padding: 8px 12px;
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 0.75rem;
+  word-break: break-all;
+  white-space: normal;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Styles pour les différentes lignes du tableau selon le statut */
+.table-row-success {
+  background-color: rgba(16, 185, 129, 0.05);
+}
+
+.table-row-warning {
+  background-color: rgba(245, 158, 11, 0.05);
+}
+
+.table-row-error {
+  background-color: rgba(244, 63, 94, 0.05);
+}
+
+.table-row-info {
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+/* Styles pour les badges de statut */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.badge-success {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: rgb(16, 185, 129);
+}
+
+.badge-warning {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: rgb(245, 158, 11);
+}
+
+.badge-error {
+  background-color: rgba(244, 63, 94, 0.1);
+  color: rgb(244, 63, 94);
+}
+
+.badge-info {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: rgb(59, 130, 246);
+}

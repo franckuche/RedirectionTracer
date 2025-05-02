@@ -1,0 +1,37 @@
+<!-- Template pour la progression de l'analyse -->
+<div id="results-container" class="bg-white rounded-lg shadow-md p-6 mb-8 max-w-2xl mx-auto"
+     hx-get="/api/task/{{ task_id }}/status" 
+     hx-trigger="load delay:1s, every 2s"
+     hx-target="#results-container"
+     hx-swap="outerHTML"
+     {% if status == 'completed' %}
+     hx-redirect="/results/{{ task_id }}"
+     {% endif %}>
+    
+    <h2 class="text-xl font-semibold text-secondary-800 mb-4 pb-2 border-b border-secondary-200">Progression de l'analyse</h2>
+    
+    <div class="mb-6">
+        <p class="text-sm text-secondary-700 mb-2">
+            <span class="font-medium">Statut:</span> {{ status }}
+        </p>
+        <p class="text-sm text-secondary-700 mb-2">
+            <span class="font-medium">Message:</span> {{ message or 'En attente...' }}
+        </p>
+    </div>
+    
+    <!-- Barre de progression -->
+    <div class="mb-6">
+        <div class="w-full bg-secondary-200 rounded-full h-4 mb-2">
+            <div class="bg-primary-600 h-4 rounded-full" style="width: {{ '%.0f'|format(progress * 100) }}%;"></div>
+        </div>
+        <div class="text-sm text-secondary-600 text-center">
+            {{ "%.0f"|format(progress * 100) }}% {{ message }}
+        </div>
+    </div>
+    
+    <!-- Message d'attente -->
+    <div class="text-center text-secondary-600 mt-6">
+        <p>Veuillez patienter pendant l'analyse des redirections...</p>
+        <p class="text-sm mt-2">Cette page se rafraîchira automatiquement.</p>
+    </div>
+</div>

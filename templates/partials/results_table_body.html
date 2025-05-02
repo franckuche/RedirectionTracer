@@ -1,0 +1,67 @@
+<!-- Début du template partiel results_table_body.html -->
+
+{% for detail in details %}
+<!-- Début de la ligne {{ detail.line_num }} -->
+<tr class="{{ 'table-row-success' if detail.status == 'CORRECT' else ('table-row-warning' if detail.status == 'INCORRECT' else 'table-row-error') }} table-row-clickable"
+    data-line-num="{{ detail.line_num }}"
+    data-source="{{ detail.source }}"
+    data-target="{{ detail.target }}"
+    data-final="{{ detail.final }}"
+    data-redirections-count="{{ detail.redirections_count }}"
+    data-http-status="{{ detail.http_status }}"
+    data-target-status="{{ detail.target_status }}"
+    data-status="{{ detail.status }}"
+    data-conclusion="{{ detail.conclusion }}"
+    onclick="showRedirectionDetails(this)">
+    <!-- Cellule 1: Numéro de ligne -->
+    <td class="cell-line">{{ detail.line_num }}</td>
+    
+    <!-- Cellule 2: URL Source -->
+    <td class="cell-url tooltip">
+        <div class="url-container">
+            <span class="url-text">{{ detail.source }}</span>
+            <span class="tooltip-text">{{ detail.source }}</span>
+        </div>
+    </td>
+    
+    <!-- Cellule 3: URL Cible -->
+    <td class="cell-url tooltip">
+        <div class="url-container">
+            <span class="url-text">{{ detail.target }}</span>
+            <span class="tooltip-text">{{ detail.target }}</span>
+        </div>
+    </td>
+    
+    <!-- Cellule 4: URL Finale -->
+    <td class="cell-url tooltip">
+        <div class="url-container">
+            <span class="url-text">{{ detail.final }}</span>
+            <span class="tooltip-text">{{ detail.final }}</span>
+        </div>
+    </td>
+    
+    <!-- Cellule 5: Code HTTP -->
+    <td class="cell-code" style="text-align: center;">
+        <span class="badge {{ 'badge-success' if detail.http_status >= 200 and detail.http_status < 300 else ('badge-warning' if detail.http_status >= 300 and detail.http_status < 400 else 'badge-error') }}">
+            {{ detail.http_status }}
+        </span>
+    </td>
+    
+    <!-- Cellule 6: Conclusion -->
+    <td class="cell-conclusion">
+        <span class="badge {{ 'badge-success' if detail.status == 'CORRECT' else ('badge-warning' if detail.status == 'INCORRECT' else 'badge-error') }}">
+            {{ detail.conclusion }}
+        </span>
+    </td>
+</tr>
+<!-- Fin de la ligne {{ detail.line_num }} -->
+{% else %}
+<tr>
+    <td colspan="6" class="text-center">
+        <div style="padding: 2rem 0;">
+            <p style="font-size: 1rem; color: var(--text-tertiary);">Aucun résultat ne correspond à ce filtre</p>
+        </div>
+    </td>
+</tr>
+{% endfor %}
+<!-- Fin du template partiel -->
