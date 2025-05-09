@@ -5,3 +5,13 @@ requests
 jinja2
 aiohttp
 brotli
+
+# Dépendances pour l'authentification et la base de données
+sqlalchemy
+psycopg2-binary
+alembic
+python-jose[cryptography]
+# Versions spécifiques pour éviter les avertissements de compatibilité
+bcrypt==4.0.1
+passlib==1.7.4
+pydantic[email]

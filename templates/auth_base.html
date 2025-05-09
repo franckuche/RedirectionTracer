@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RedirectionTracer - Authentification{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Configuration Tailwind inspirée de PrimeVue -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#3B82F6',
+              'primary-dark': '#2563EB',
+              secondary: '#64748B',
+              success: '#22C55E',
+              warning: '#F59E0B',
+              danger: '#EF4444',
+              info: '#3B82F6',
+            },
+            fontFamily: {
+              sans: ['Inter', 'Roboto', 'sans-serif'],
+            },
+          }
+        }
+      }
+    </script>
+    
+    <!-- Styles personnalisés -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div class="w-full max-w-md">
+        <div class="text-center mb-8">
+            <a href="/" class="inline-block">
+                <img src="/static/img/logo.png" alt="RedirectionTracer Logo" class="h-12 mx-auto">
+                <h1 class="text-2xl font-bold text-primary mt-2">RedirectionTracer</h1>
+            </a>
+        </div>
+        
+        {% block content %}{% endblock %}
+        
+        <div class="text-center mt-8 text-sm text-gray-500">
+            <p>&copy; 2025 RedirectionTracer. Tous droits réservés.</p>
+        </div>
+    </div>
+    
+    {% block scripts %}{% endblock %}
+    
+    <!-- Script global d'authentification -->
+    <script>
+        // Fonction pour vérifier si l'utilisateur est connecté
+        function isLoggedIn() {
+            return localStorage.getItem('access_token') !== null;
+        }
+        
+        // Fonction pour ajouter le token d'authentification aux requêtes fetch
+        const originalFetch = window.fetch;
+        window.fetch = function(url, options = {}) {
+            // Ne pas modifier les requêtes vers /api/auth/token (connexion)
+            if (url === '/api/auth/token') {
+                return originalFetch(url, options);
+            }
+            
+            // Ajouter le token d'authentification aux autres requêtes si disponible
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                options.headers = options.headers || {};
+                options.headers['Authorization'] = `Bearer ${token}`;
+            }
+            
+            return originalFetch(url, options);
+        };
+        
+        // Rediriger vers la page de connexion si l'utilisateur n'est pas connecté
+        // et qu'il essaie d'accéder à une page protégée
+        if (!isLoggedIn() && 
+            !window.location.pathname.startsWith('/login') && 
+            !window.location.pathname.startsWith('/register') && 
+            !window.location.pathname.startsWith('/static')) {
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>

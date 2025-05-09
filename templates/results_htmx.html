@@ -1,35 +1,31 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Résultats de l'analyse - RedirectionTracer</title>
-    
-    <!-- Google Fonts - Inter pour un design moderne -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- Animation CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
-    
-    <!-- HTMX -->
-    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
-    
-    <!-- Chart.js pour les visualisations -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- Feather Icons -->
-    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
-    
-    <!-- Styles personnalisés -->
-    <link rel="stylesheet" href="/static/css/modern-design.css">
-    <link rel="stylesheet" href="/static/css/stat-cards-minimal.css">
-    <link rel="stylesheet" href="/static/css/table-styles.css">
-    <link rel="stylesheet" href="/static/css/filters.css">
-    <link rel="stylesheet" href="/static/css/popup-styles.css">
-</head>
-<body>
+{% extends "app_base.html" %}
+
+{% block title %}Résultats de l'analyse - RedirectionTracer{% endblock %}
+
+{% block head %}
+<!-- Google Fonts - Inter pour un design moderne -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Animation CSS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+
+<!-- Chart.js pour les visualisations -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Feather Icons -->
+<script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+
+<!-- Styles personnalisés -->
+<link rel="stylesheet" href="/static/css/modern-design.css">
+<link rel="stylesheet" href="/static/css/stat-cards-minimal.css">
+<link rel="stylesheet" href="/static/css/table-styles.css">
+<link rel="stylesheet" href="/static/css/filters.css">
+<link rel="stylesheet" href="/static/css/popup-styles.css">
+{% endblock %}
+
+{% block content %}
     <!-- En-tête moderne -->
     <header class="header">
         <div class="container">
@@ -393,5 +389,4 @@
     <script src="/static/js/search.js" defer></script>
     <script src="/static/js/export.js" defer></script>
     {% include "partials/redirection_details_popup.html" %}
-</body>
-</html>
+{% endblock %}

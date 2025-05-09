@@ -1,0 +1,206 @@
+{% extends "auth_base.html" %}
+
+{% block title %}Connexion - RedirectionTracer{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-lg overflow-hidden shadow-lg">
+    <div class="px-6 py-8">
+        <h2 class="text-2xl font-bold mb-6 text-center">Connexion</h2>
+        
+        <div id="success-message" class="mb-6 p-3 bg-green-100 text-green-700 rounded-md hidden">
+            Votre compte a été créé avec succès ! Vous pouvez maintenant vous connecter.
+        </div>
+        
+        <form id="login-form" class="space-y-6">
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                <input type="email" id="email" name="email" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary">
+            </div>
+            
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-700">Mot de passe</label>
+                <input type="password" id="password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary">
+            </div>
+            
+            <div id="error-message" class="text-red-500 text-sm hidden"></div>
+            
+            <div>
+                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Se connecter
+                </button>
+            </div>
+        </form>
+        
+        <div class="mt-6 text-center">
+            <p class="text-sm text-gray-600">
+                Pas encore de compte? 
+                <a href="/register" class="font-medium text-blue-600 hover:text-blue-500">
+                    Créer un compte
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('login-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const errorMessage = document.getElementById('error-message');
+    
+    try {
+        const response = await fetch('/api/auth/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                'username': email, // On garde 'username' comme clé pour compatibilité avec OAuth2PasswordRequestForm
+                'password': password,
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // Enregistrer le token dans localStorage
+            localStorage.setItem('access_token', data.access_token);
+            
+            // Afficher un message de succès
+            const successDiv = document.createElement('div');
+            successDiv.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4';
+            successDiv.innerHTML = `
+                <strong class="font-bold">Connexion réussie!</strong>
+                <span class="block sm:inline"> Redirection en cours...</span>
+            `;
+            
+            // Insérer le message de succès avant le formulaire
+            const form = document.getElementById('login-form');
+            if (form && form.parentNode) {
+                form.parentNode.insertBefore(successDiv, form);
+            } else {
+                // Fallback si le formulaire n'est pas trouvé
+                document.querySelector('.bg-white').prepend(successDiv);
+            }
+            
+            // Récupérer le paramètre redirect s'il existe
+            const urlParams = new URLSearchParams(window.location.search);
+            const redirectUrl = urlParams.get('redirect');
+            
+            // Ajouter le token aux en-têtes pour la prochaine requête
+            const token = data.access_token;
+            
+            console.log('Authentification réussie, token:', token.substring(0, 10) + '...');
+            
+            // Afficher les informations de redirection
+            console.log('Redirection vers:', redirectUrl || '/');
+            console.log('Token d\'authentification:', token.substring(0, 15) + '...');
+            
+            // Stocker le token dans le localStorage pour les futures requêtes
+            localStorage.setItem('access_token', token);
+            
+            // Afficher tous les en-têtes pour le débogage
+            console.log('En-têtes actuels:', document.cookie);
+            
+            // Définir un cookie avec le token pour les requêtes suivantes (alternative au localStorage)
+            document.cookie = `access_token=${token}; path=/; max-age=3600; SameSite=Strict`;
+            console.log('Cookie d\'authentification défini:', document.cookie);
+            
+            // Rediriger vers la page d'origine ou la page d'accueil avec le token dans l'en-tête
+            // Utiliser une requête fetch avec le token pour éviter la redirection vers login
+            fetch(redirectUrl || '/', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            }).then(response => {
+                console.log('Réponse de la requête de redirection:', response.status, response.statusText);
+                console.log('En-têtes de la réponse:', response.headers);
+                
+                // Ajouter un délai avant la redirection pour voir le message de succès
+                setTimeout(() => {
+                    console.log('Redirection effective vers:', redirectUrl || '/');
+                    
+                    // Stocker le token dans le localStorage et les cookies
+                    localStorage.setItem('access_token', token);
+                    document.cookie = `access_token=${token}; path=/; max-age=3600; SameSite=Strict`;
+                    
+                    // Préparer l'URL de redirection
+                    const url = new URL(redirectUrl || '/', window.location.origin);
+                    
+                    // Effectuer une requête préliminaire pour vérifier que le token fonctionne
+                    fetch(url.toString(), {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            console.log('Vérification du token réussie, redirection en cours...');
+                            // Redirection simple avec window.location
+                            window.location.href = url.toString();
+                        } else {
+                            console.error('Erreur lors de la vérification du token:', response.status);
+                            // Essayer quand même la redirection
+                            window.location.href = url.toString();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erreur lors de la vérification du token:', error);
+                        // En cas d'erreur, essayer quand même la redirection
+                        window.location.href = url.toString();
+                    });
+                }, 1500); // Attendre 1.5 secondes pour que l'utilisateur voie le message
+            }).catch(error => {
+                console.error('Erreur lors de la redirection:', error);
+                // Afficher un message d'erreur à l'utilisateur dans l'élément error-message existant
+                const errorMessageElement = document.getElementById('error-message');
+                if (errorMessageElement) {
+                    errorMessageElement.textContent = `Erreur de redirection: ${error.message}`;
+                    errorMessageElement.classList.remove('hidden');
+                } else {
+                    // Fallback si l'élément error-message n'existe pas
+                    const form = document.getElementById('login-form');
+                    if (form) {
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'text-red-500 text-sm mt-4';
+                        errorDiv.textContent = `Erreur de redirection: ${error.message}`;
+                        form.prepend(errorDiv);
+                    } else {
+                        console.error('Impossible d\'afficher le message d\'erreur: éléments DOM introuvables');
+                    }
+                }
+            });
+        } else {
+            // Afficher le message d'erreur
+            errorMessage.textContent = data.detail || 'Erreur de connexion';
+            errorMessage.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        errorMessage.textContent = 'Une erreur est survenue';
+        errorMessage.classList.remove('hidden');
+    }
+});
+</script>
+
+<!-- Script pour afficher le message de confirmation après l'inscription -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const registered = urlParams.get('registered');
+        
+        if (registered === 'true') {
+            const successMessage = document.getElementById('success-message');
+            successMessage.classList.remove('hidden');
+            
+            // Faire disparaître le message après 5 secondes
+            setTimeout(function() {
+                successMessage.classList.add('hidden');
+            }, 5000);
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}Administration - RedirectionTracer{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-lg shadow-lg p-6">
+        <h1 class="text-2xl font-bold mb-6">Panneau d'administration</h1>
+        
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold mb-4">Informations utilisateur</h2>
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <p><strong>Nom d'utilisateur:</strong> {{ user.username }}</p>
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>Rôle:</strong> {% if user.is_admin %}Administrateur{% else %}Utilisateur{% endif %}</p>
+                <p><strong>Compte créé le:</strong> {{ user.created_at.strftime('%d/%m/%Y à %H:%M') }}</p>
+                <p><strong>Dernière connexion:</strong> {% if user.last_login %}{{ user.last_login.strftime('%d/%m/%Y à %H:%M') }}{% else %}Jamais{% endif %}</p>
+            </div>
+        </div>
+        
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold mb-4">Gestion des utilisateurs</h2>
+            <div id="users-list" class="overflow-x-auto">
+                <table class="min-w-full bg-white">
+                    <thead>
+                        <tr>
+                            <th class="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
+                            <th class="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Nom d'utilisateur</th>
+                            <th class="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
+                            <th class="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
+                            <th class="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Rôle</th>
+                            <th class="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                        <!-- Les utilisateurs seront chargés ici dynamiquement -->
+                        <tr>
+                            <td colspan="6" class="py-4 px-4 text-center text-gray-500">Chargement des utilisateurs...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div>
+            <h2 class="text-xl font-semibold mb-4">Statistiques</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg p-4 shadow">
+                    <div class="flex items-center">
+                        <div class="text-2xl mr-2">👤</div>
+                        <h3 class="font-medium">Total Utilisateurs</h3>
+                    </div>
+                    <div class="flex justify-between items-center mt-4">
+                        <span class="text-2xl font-bold" id="total-users">-</span>
+                    </div>
+                </div>
+                
+                <div class="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-4 shadow">
+                    <div class="flex items-center">
+                        <div class="text-2xl mr-2">🔄</div>
+                        <h3 class="font-medium">Total Analyses</h3>
+                    </div>
+                    <div class="flex justify-between items-center mt-4">
+                        <span class="text-2xl font-bold" id="total-analyses">-</span>
+                    </div>
+                </div>
+                
+                <div class="bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg p-4 shadow">
+                    <div class="flex items-center">
+                        <div class="text-2xl mr-2">📊</div>
+                        <h3 class="font-medium">Analyses aujourd'hui</h3>
+                    </div>
+                    <div class="flex justify-between items-center mt-4">
+                        <span class="text-2xl font-bold" id="today-analyses">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Fonction pour charger les utilisateurs
+async function loadUsers() {
+    try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/auth/login';
+            return;
+        }
+        
+        const response = await fetch('/api/admin/users', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const users = await response.json();
+            const tableBody = document.getElementById('users-table-body');
+            
+            if (users.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="py-4 px-4 text-center text-gray-500">Aucun utilisateur trouvé</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tableBody.innerHTML = '';
+            
+            users.forEach(user => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2 px-4 border-b border-gray-200">${user.id}</td>
+                    <td class="py-2 px-4 border-b border-gray-200">${user.username}</td>
+                    <td class="py-2 px-4 border-b border-gray-200">${user.email}</td>
+                    <td class="py-2 px-4 border-b border-gray-200">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                            ${user.is_active ? 'Actif' : 'Inactif'}
+                        </span>
+                    </td>
+                    <td class="py-2 px-4 border-b border-gray-200">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.is_admin ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}">
+                            ${user.is_admin ? 'Admin' : 'Utilisateur'}
+                        </span>
+                    </td>
+                    <td class="py-2 px-4 border-b border-gray-200">
+                        <button class="text-blue-600 hover:text-blue-900 mr-2" onclick="toggleUserStatus(${user.id}, ${!user.is_active})">
+                            ${user.is_active ? 'Désactiver' : 'Activer'}
+                        </button>
+                        <button class="text-purple-600 hover:text-purple-900 mr-2" onclick="toggleAdminStatus(${user.id}, ${!user.is_admin})">
+                            ${user.is_admin ? 'Retirer admin' : 'Faire admin'}
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+            
+            // Mettre à jour le compteur d'utilisateurs
+            document.getElementById('total-users').textContent = users.length;
+            
+        } else if (response.status === 401) {
+            // Token expiré ou invalide
+            localStorage.removeItem('access_token');
+            window.location.href = '/auth/login';
+        } else {
+            console.error('Erreur lors du chargement des utilisateurs');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+    }
+}
+
+// Fonction pour basculer le statut actif/inactif d'un utilisateur
+async function toggleUserStatus(userId, newStatus) {
+    try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/auth/login';
+            return;
+        }
+        
+        const response = await fetch(`/api/admin/users/${userId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ is_active: newStatus })
+        });
+        
+        if (response.ok) {
+            // Recharger la liste des utilisateurs
+            loadUsers();
+        } else {
+            console.error('Erreur lors de la modification du statut');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+    }
+}
+
+// Fonction pour basculer le statut admin d'un utilisateur
+async function toggleAdminStatus(userId, newStatus) {
+    try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/auth/login';
+            return;
+        }
+        
+        const response = await fetch(`/api/admin/users/${userId}/admin`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ is_admin: newStatus })
+        });
+        
+        if (response.ok) {
+            // Recharger la liste des utilisateurs
+            loadUsers();
+        } else {
+            console.error('Erreur lors de la modification du statut admin');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+    }
+}
+
+// Charger les utilisateurs au chargement de la page
+document.addEventListener('DOMContentLoaded', function() {
+    loadUsers();
+    
+    // Simuler des statistiques pour la démo
+    document.getElementById('total-analyses').textContent = '42';
+    document.getElementById('today-analyses').textContent = '7';
+});
+</script>
+{% endblock %}

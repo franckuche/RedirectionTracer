@@ -1,0 +1,91 @@
+/* Styles personnalisés pour la sidebar - Priorité élevée */
+
+/* Suppression des titres de section */
+.sidebar-section-title,
+h3.text-xs.font-semibold.text-gray-500.uppercase.tracking-wider.mb-2 {
+    display: none !important;
+}
+
+/* Style du bouton de déconnexion */
+#sidebar-logout-btn,
+#logout-btn,
+button[id*="logout"] {
+    background-color: #ef4444 !important; 
+    color: white !important;
+    border-radius: 12px !important;
+    padding: 8px 16px !important;
+    font-weight: 500 !important;
+    width: 75% !important;
+    text-align: center !important;
+    margin: 0 auto !important;
+    display: block !important;
+    transition: background-color 0.2s ease !important;
+    border: none !important;
+    cursor: pointer !important;
+    margin-top: 1rem !important;
+    margin-bottom: 1rem !important;
+}
+
+#sidebar-logout-btn:hover,
+#logout-btn:hover,
+button[id*="logout"]:hover {
+    background-color: #dc2626 !important;
+}
+
+/* Centrage des boutons d'authentification */
+#auth-section,
+div[id*="auth"] {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    margin-top: auto !important;
+    padding: 1rem !important;
+}
+
+/* Style pour les boutons de connexion/inscription */
+#auth-section a,
+div[id*="auth"] a {
+    margin: 5px 0 !important;
+    border-radius: 12px !important;
+    padding: 8px 16px !important;
+    width: 75% !important;
+    text-align: center !important;
+    display: inline-block !important;
+}
+
+/* Suppression des bordures */
+#sidebar, 
+#auth-section,
+.sidebar-header,
+aside,
+aside > div {
+    border: none !important;
+}
+
+/* Effet de verre pour la sidebar */
+#sidebar,
+aside.fixed {
+    background-color: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Style pour les liens de la sidebar */
+.sidebar-link,
+aside a {
+    border-radius: 12px !important;
+    transition: all 0.2s ease !important;
+    margin-bottom: 4px !important;
+}
+
+.sidebar-link:hover,
+aside a:hover {
+    background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Force l'application des styles */
+.force-styles {
+    all: initial !important;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+}

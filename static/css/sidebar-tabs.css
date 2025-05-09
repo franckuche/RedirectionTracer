@@ -1,0 +1,137 @@
+/* Styles modernes pour les onglets de la sidebar */
+
+/* Conteneur de navigation */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Lien de navigation */
+.sidebar-tab {
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  overflow: hidden;
+}
+
+.sidebar-tab:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+  transform: translateX(2px);
+}
+
+/* Indicateur latéral */
+.sidebar-tab-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-tab:hover .sidebar-tab-indicator {
+  opacity: 0.7;
+}
+
+.sidebar-tab.active .sidebar-tab-indicator {
+  opacity: 1;
+}
+
+/* Icône */
+.sidebar-tab-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 12px;
+  stroke-width: 1.75;
+  transition: color 0.2s ease;
+}
+
+/* Texte */
+.sidebar-tab-text {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #475467;
+  transition: color 0.2s ease;
+}
+
+.sidebar-tab:hover .sidebar-tab-text {
+  color: #101828;
+}
+
+.sidebar-tab.active .sidebar-tab-text {
+  color: #101828;
+  font-weight: 600;
+}
+
+/* Séparateur de section */
+.sidebar-section-divider {
+  height: 1px;
+  background-color: #F2F4F7;
+  margin: 1.25rem 0;
+}
+
+/* Titre de section (optionnel) */
+.sidebar-section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #98A2B3;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+  padding-left: 1rem;
+}
+
+/* Variantes de couleur pour les indicateurs */
+.indicator-primary {
+  background: linear-gradient(to bottom, #0066FF, #0052CC);
+}
+
+.indicator-purple {
+  background: linear-gradient(to bottom, #9E77ED, #6E56CF);
+}
+
+.indicator-blue {
+  background: linear-gradient(to bottom, #53B1FD, #2E90FA);
+}
+
+.indicator-amber {
+  background: linear-gradient(to bottom, #FDB022, #F79009);
+}
+
+.indicator-teal {
+  background: linear-gradient(to bottom, #2DD4BF, #14B8A6);
+}
+
+.indicator-emerald {
+  background: linear-gradient(to bottom, #12B76A, #027A48);
+}
+
+.indicator-rose {
+  background: linear-gradient(to bottom, #FDA4AF, #F43F5E);
+}
+
+/* Animation subtile au survol */
+.sidebar-tab {
+  transform: translateX(0);
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.sidebar-tab:hover {
+  transform: translateX(2px);
+}
+
+/* Styles pour l'état actif */
+.sidebar-tab.active {
+  background-color: rgba(0, 102, 255, 0.05);
+}
+
+.sidebar-tab.active .sidebar-tab-icon {
+  color: #0066FF;
+}

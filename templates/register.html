@@ -1,0 +1,91 @@
+{% extends "auth_base.html" %}
+
+{% block title %}Inscription - RedirectionTracer{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-lg overflow-hidden shadow-lg">
+    <div class="px-6 py-8">
+        <h2 class="text-2xl font-bold mb-6 text-center">Créer un compte</h2>
+        
+        <form id="register-form" class="space-y-6">
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                <input type="email" id="email" name="email" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary">
+            </div>
+            
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-700">Mot de passe</label>
+                <input type="password" id="password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary">
+            </div>
+            
+            <div>
+                <label for="confirm-password" class="block text-sm font-medium text-gray-700">Confirmer le mot de passe</label>
+                <input type="password" id="confirm-password" name="confirm-password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary">
+            </div>
+            
+            <div id="error-message" class="text-red-500 text-sm hidden"></div>
+            
+            <div>
+                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    S'inscrire
+                </button>
+            </div>
+        </form>
+        
+        <div class="mt-6 text-center">
+            <p class="text-sm text-gray-600">
+                Déjà un compte? 
+                <a href="/login" class="font-medium text-blue-600 hover:text-blue-500">
+                    Se connecter
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('register-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+    const errorMessage = document.getElementById('error-message');
+    
+    // Vérification des mots de passe
+    if (password !== confirmPassword) {
+        errorMessage.textContent = 'Les mots de passe ne correspondent pas';
+        errorMessage.classList.remove('hidden');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email: email,
+                password: password
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // Rediriger vers la page de connexion
+            window.location.href = '/login?registered=true';
+        } else {
+            // Afficher le message d'erreur
+            errorMessage.textContent = data.detail || 'Erreur lors de l\'inscription';
+            errorMessage.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        errorMessage.textContent = 'Une erreur est survenue';
+        errorMessage.classList.remove('hidden');
+    }
+});
+</script>
+{% endblock %}
