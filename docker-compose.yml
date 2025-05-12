@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # Application FastAPI
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: redirectiontracer-app
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/redirectiontracer
+      - SECRET_KEY=${SECRET_KEY:-supersecretkey}
+      - DEV_MODE=False
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1  # Pour voir les logs en temps réel
+    volumes:
+      - ./app:/app/app
+      - ./static:/app/static
+      - ./templates:/app/templates
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 
+
+  # Base de données PostgreSQL
+  db:
+    image: postgres:14
+    container_name: redirectiontracer-db
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=redirectiontracer
+      # Activer les logs de PostgreSQL
+      - POSTGRES_INITDB_ARGS=--data-checksums
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Service de migration automatique avec Alembic
+  migration:
+    build: .
+    container_name: redirectiontracer-migration
+    command: sh -c "echo 'Attente de la base de données...' && sleep 5 && echo 'Lancement des migrations...' && python -c 'from app.database
