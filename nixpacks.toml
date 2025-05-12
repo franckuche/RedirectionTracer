@@ -1,0 +1,8 @@
+[phases.setup]
+runtime = "python_3"
+
+[phases.install]
+command = "pip install -r requirements.txt"
+
+[phases.start]
+command = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
